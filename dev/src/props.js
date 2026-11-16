@@ -19,6 +19,8 @@ export const DEFS = {
   box:     { model: 'cardboard', mass: 3, hp: 10, shape: 'box', soft: true, label: 'BOX' },
   fire:    { model: 'fire_barrel', mass: 30, hp: 80, shape: 'cyl', metal: true, fire: true, label: 'FIRE BARREL' },
   container: { proc: 'container', mass: 900, hp: 900, shape: 'box', metal: true, label: 'CONTAINER' },
+  cagedoor: { proc: 'cagedoor', mass: 30, hp: 260, shape: 'box', metal: true, label: 'CAGE DOOR' },
+  riotshield: { proc: 'riotshield', mass: 16, hp: 170, shape: 'box', metal: true, label: 'RIOT SHIELD' },
   chunk:   { mass: 2.5, hp: 6, shape: 'box', label: 'DEBRIS' },
 };
 
@@ -26,6 +28,23 @@ const TEMPLATES = {};
 function template(type) {
   if (TEMPLATES[type]) return TEMPLATES[type];
   const def = DEFS[type];
+  if (def.proc === 'cagedoor') {
+    const g = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0x9aa2aa, metalness: 0.85, roughness: 0.35 });
+    const parts = [];
+    for (const y of [-1.15, 1.15]) parts.push([2.2, 0.1, 0.1, 0, y]);
+    for (const x of [-1.05, 1.05]) parts.push([0.1, 2.4, 0.1, x, 0]);
+    for (let k = 1; k < 10; k++) parts.push([0.04, 2.3, 0.04, -1.05 + k * 0.21, 0]);
+    parts.push([2.2, 0.06, 0.06, 0, 0]);
+    for (const [w, h, d, x, y] of parts) { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, 0); b.castShadow = true; g.add(b); }
+    return (TEMPLATES[type] = { g, size: new THREE.Vector3(2.2, 2.4, 0.14) });
+  }
+  if (def.proc === 'riotshield') {
+    const g = new THREE.Group();
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.3, 0.07), new THREE.MeshStandardMaterial({ color: 0x1a2028, metalness: 0.3, roughness: 0.15, transparent: true, opacity: 0.85 }));
+    const st = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.1, 0.075), new THREE.MeshStandardMaterial({ color: 0x221000, emissive: 0xff8a20, emissiveIntensity: 1.2 }));
+    st.position.y = 0.42; m.castShadow = true; g.add(m); g.add(st);
+    return (TEMPLATES[type] = { g, size: new THREE.Vector3(0.8, 1.3, 0.08) });
+  }
   if (def.proc === 'container') {
     const g = new THREE.Group();
     const m = new THREE.Mesh(new THREE.BoxGeometry(6.06, 2.59, 2.44), new THREE.MeshStandardMaterial({ map: containerTexture('#5a2a6a', 'CANTOR SOUND'), roughness: 0.6, metalness: 0.45 }));
@@ -128,48 +147,94 @@ export function applyDamageLook(o) {
   }
 }
 
-export function populateProps() {
-  const P = (t, x, z, r = 0, y = null) => makeProp(t, x, z, r, y);
-  // the big stuff: shields and wrecking balls
-  P('car', -6.6, -4.5, 0.03); P('car', 6.7, 10.5, Math.PI - 0.04);
-  P('barrier', -2.2, -12.5, 0.15); P('barrier', 3.6, -0.5, -0.2); P('barrier', -4.8, 6.8, 1.45);
-  P('utility', 11.6, -10, -Math.PI / 2); P('utility', -11.7, 4.8, Math.PI / 2);
-  // street clutter
-  const cans = [[-9.7, -9.4], [-9.7, -8.7], [9.7, -2.6], [9.6, 14.6], [-9.7, 14.2], [3.2, -17.8], [-2.8, 12.6], [9.5, 20.6], [-9.9, -21], [1.4, 1.8], [-4.2, -9.2], [5.4, -6.4]];
-  cans.forEach(([x, z], i) => P(i % 3 === 0 ? 'trashR' : 'trash', x, z, rand(0, 6)));
-  for (const [x, z] of [[-4.2, -17.4], [-3.5, -17.9], [-3.8, -16.7], [5.2, 4.2], [4.5, 18.6], [7.4, -20.5]]) P('barrel', x, z, rand(0, 6));
-  for (const [x, z] of [[8.2, -13.6], [-10.2, 9.5], [1.6, 21]]) P('drum', x, z, rand(0, 6));
-  for (const [x, z, r] of [[6.1, -14.2, 0.1], [7.0, -14.6, 1.4], [-6.6, 17.2, 0.2], [-5.6, 17.6, -0.4], [-1.8, -3.2, 0.4]]) P('crate', x, z, r);
-  P('crate', 6.4, -14.35, 0.5, 0.36 + 0.18 + 0.03);
-  for (const [x, z] of [[-10.4, -14.6], [-10.9, -13.6], [10.5, 2.6], [10.9, 3.4], [-10.6, 20.2], [10.2, -20.8], [-0.6, -21.6]]) P('bag', x, z, rand(0, 6));
-  for (const [x, z] of [[-9.4, -15.6], [10.0, 1.4], [2.4, -18.6], [-7.8, 18.4]]) P('box', x, z, rand(0, 6));
-  P('fire', -10.4, -6.0, 0);
-
-  // ---- Pier 9 Market ----
-  for (const [x, z] of [[-4.3, -33], [4.4, -41], [-4.2, -49], [4.3, -60.5]]) P('trash', x, z, rand(0, 6));
-  for (const [x, z, r] of [[-3.6, -37, 0.3], [-2.9, -37.5, 1.1], [3.4, -52, 0.2], [3.9, -52.7, 1.3], [-2, -58.4, 0.5]]) P('crate', x, z, r);
-  for (const [x, z] of [[4.2, -34], [-4.3, -44.5], [-4.4, -61]]) P('bag', x, z, rand(0, 6));
-  for (const [x, z] of [[3.6, -45], [-3.1, -55], [2, -38]]) P('box', x, z, rand(0, 6));
-  for (const [x, z] of [[2.6, -47.5], [-2.4, -62.5], [3.0, -48.2]]) P('barrel', x, z, rand(0, 6));
-  for (const [x, z] of [[-3.5, -41], [3.9, -58]]) P('drum', x, z, rand(0, 6));
-  P('barrier', 0.8, -43.5, 1.45); P('barrier', -1.5, -56.2, 0.2);
-  P('fire', -4.1, -52.5, 0);
-  // ---- Gut Lane ----
-  for (const [x, z] of [[-3.6, -67], [3.7, -72], [-3.7, -79.5], [3.6, -88.2]]) P(Math.random() < 0.5 ? 'trash' : 'trashR', x, z, rand(0, 6));
-  for (const [x, z] of [[-3.6, -72.3], [-3.2, -72.9], [3.5, -80.6], [3.3, -86.6], [-3.5, -91]]) P('bag', x, z, rand(0, 6));
-  for (const [x, z] of [[3.4, -66.5], [-2.9, -84], [1.5, -77]]) P('box', x, z, rand(0, 6));
-  P('crate', 2.9, -75.5, 0.2); P('crate', 3.4, -75.9, 1.2); P('barrel', -3.4, -82, 0); P('drum', 3.7, -90.6, 0);
-  P('utility', -3.75, -74.6, Math.PI / 2);
-  // ---- Pier 9 docks ----
-  P('container', -6, -106, 0.15); P('container', 2.6, -121.6, -0.1);
-  P('car', -11, -116, 0.6);
-  P('barrier', -3, -99.2, 0); P('barrier', 6, -103, 1.2); P('barrier', -14, -108.5, 0.3);
-  for (const [x, z] of [[3.5, -100.5], [4.2, -101.3], [-9.6, -112.3], [-10.3, -113], [0.5, -126.6]]) P('barrel', x, z, rand(0, 6));
-  for (const [x, z, r] of [[-16.5, -103.6, 0.1], [-15.9, -104.3, 0.9], [-15.2, -121, 0.3], [4.4, -127.7, 0], [5.2, -127.4, 0.6]]) P('crate', x, z, r);
-  P('crate', -16.2, -103.95, 0.5, 0.36 + 0.18 + 0.03);
-  for (const [x, z] of [[12.6, -111.6], [-17.8, -126.5], [12.5, -117.6]]) P('trash', x, z, rand(0, 6));
-  for (const [x, z] of [[-5.5, -126], [7.2, -109]]) P('drum', x, z, rand(0, 6));
-  P('fire', -1.5, -114, 0); P('utility', 13.1, -114.6, -Math.PI / 2);
-  for (const [x, z] of [[-18, -118], [10.8, -95.6], [-7.8, -95.4]]) P('bag', x, z, rand(0, 6));
-  for (const [x, z] of [[-17.4, -118.8], [9.6, -95.8]]) P('box', x, z, rand(0, 6));
+// Props per zone (index = ZONES order). Spawned lazily around the player so the physics world stays small.
+const R = () => Math.random() * 6.28;
+export const ZONE_PROPS = [
+  // 0 HARROW STREET
+  () => [
+    ['car', -6.6, -4.5, 0.03], ['car', 6.7, 10.5, Math.PI - 0.04],
+    ['barrier', -2.2, -12.5, 0.15], ['barrier', 3.6, -0.5, -0.2], ['barrier', -4.8, 6.8, 1.45],
+    ['utility', 11.6, -15, -Math.PI / 2], ['utility', -11.7, 4.8, Math.PI / 2],
+    ...[[-9.7, -9.4], [-9.7, -8.7], [9.7, -2.6], [9.6, 14.6], [-9.7, 14.2], [3.2, -17.8], [-2.8, 12.6], [9.5, 20.6], [-9.9, -21], [1.4, 1.8], [-4.2, -9.2], [5.4, -6.4]].map(([x, z], i) => [i % 3 === 0 ? 'trashR' : 'trash', x, z, R()]),
+    ...[[-4.2, -17.4], [-3.5, -17.9], [-3.8, -16.7], [5.2, 4.2], [4.5, 18.6], [7.4, -20.5]].map(([x, z]) => ['barrel', x, z, R()]),
+    ...[[8.2, -13.6], [-10.2, 9.5], [1.6, 21]].map(([x, z]) => ['drum', x, z, R()]),
+    ['crate', 6.1, -14.2, 0.1], ['crate', 7.0, -14.6, 1.4], ['crate', -6.6, 17.2, 0.2], ['crate', -5.6, 17.6, -0.4], ['crate', -1.8, -3.2, 0.4], ['crate', 6.4, -14.35, 0.5, 0.57],
+    ...[[-10.4, -14.6], [-10.9, -13.6], [10.5, 2.6], [10.9, 3.4], [-10.6, 20.2], [10.2, -20.8], [-0.6, -21.6]].map(([x, z]) => ['bag', x, z, R()]),
+    ...[[-9.4, -15.6], [10.0, 1.4], [2.4, -18.6], [-7.8, 18.4]].map(([x, z]) => ['box', x, z, R()]),
+    ['fire', -10.4, -6.0, 0],
+  ],
+  // 1 CHECKPOINT PLAZA (+ side street)
+  () => [
+    ['car', 38, 0.6, 1.57], ['car', 57, -25, 0.2],
+    ['barrier', 38.5, -14.5, 1.57], ['barrier', 48, -13.5, 0.3], ['barrier', 55, -2, 1.2],
+    ...[[31, -3], [61, -8], [43, -28.5], [60, 2.5], [31, -28], [20, -7.3]].map(([x, z]) => ['trash', x, z, R()]),
+    ['barrel', 54, -18, 0], ['barrel', 54.7, -18.6, 1], ['barrel', 36, -25, 2],
+    ['crate', 58, -28.4, 0.2], ['crate', 58.8, -27.9, 1.1], ['drum', 42, -12, 0], ['drum', 50, -26, 0],
+    ['bag', 22, -12, 0], ['bag', 26, -7, 1], ['bag', 31.5, -20, 2], ['box', 24, -11.8, 0], ['box', 45, 1.5, 0],
+    ['utility', 61.2, -20, -Math.PI / 2], ['fire', 39, -2.5, 0],
+  ],
+  // 2 TRAM CUT
+  () => [
+    ['barrier', 45.5, -37, 0.2], ['bag', 49, -33, 0], ['bag', 9, -43, 1], ['bag', 16, -47.3, 2],
+    ['trash', 43, -43, 0], ['trash', 21, -43.2, 0], ['trash', 49, -46.5, 0],
+    ['crate', 12, -47, 0.3], ['crate', 12.6, -46.4, 1.2], ['barrel', 25, -43, 0], ['barrel', 40, -43.5, 0], ['box', 46, -40, 0], ['drum', 18, -43, 0],
+  ],
+  // 3 PIER 9 MARKET
+  () => [
+    ...[[-4.3, -33], [4.4, -41], [-4.2, -49], [4.3, -60.5]].map(([x, z]) => ['trash', x, z, R()]),
+    ['crate', -3.6, -37, 0.3], ['crate', -2.9, -37.5, 1.1], ['crate', 3.4, -52, 0.2], ['crate', 3.9, -52.7, 1.3], ['crate', -2, -58.4, 0.5],
+    ['bag', 4.2, -34, 0], ['bag', -4.3, -44.5, 1], ['bag', -4.4, -61, 2], ['box', 3.6, -38, 0], ['box', -3.1, -55, 0], ['box', 2, -38.8, 0],
+    ['barrel', 2.6, -47.5, 0], ['barrel', -2.4, -62.5, 0], ['barrel', 3.0, -48.2, 1], ['drum', -3.5, -41, 0], ['drum', 3.9, -58, 0],
+    ['barrier', 0.8, -40.5, 1.45], ['barrier', -1.5, -56.2, 0.2], ['fire', -4.1, -52.5, 0],
+  ],
+  // 4 COLD STORAGE (cage doors are added by the rescue mission)
+  () => [
+    ['crate', -14, -48, 0.2], ['crate', -13.3, -48.7, 1], ['crate', -24, -52.8, 0], ['crate', -17, -52.8, 0.6],
+    ['drum', -10, -48, 0], ['drum', -28.4, -58, 0], ['drum', -9, -62.5, 0], ['box', -12, -52.5, 0], ['box', -20, -58.6, 0], ['box', -27, -47.5, 0],
+    ['trash', -9, -50, 0], ['barrel', -15, -58.8, 0], ['utility', -28.8, -52, Math.PI / 2],
+  ],
+  // 5 GUT LANE
+  () => [
+    ...[[-3.6, -67], [3.7, -72], [-3.7, -79.5], [3.6, -88.2]].map(([x, z], i) => [i % 2 ? 'trash' : 'trashR', x, z, R()]),
+    ...[[-3.6, -72.3], [-3.2, -72.9], [3.5, -84.6], [3.3, -86.6], [-3.5, -91]].map(([x, z]) => ['bag', x, z, R()]),
+    ['box', 3.4, -66.5, 0], ['box', -2.9, -84, 0], ['box', 1.5, -77, 0], ['crate', 2.9, -73.5, 0.2], ['crate', 3.4, -73.9, 1.2],
+    ['barrel', -3.4, -82, 0], ['drum', 3.7, -90.6, 0], ['utility', -3.75, -74.6, Math.PI / 2],
+  ],
+  // 6 RAIL YARD (+ lane)
+  () => [
+    ['barrel', 46, -76, 0], ['barrel', 46.7, -76.6, 1], ['barrel', 58, -90, 0], ['barrel', 36, -68, 0],
+    ['drum', 12, -77, 0], ['drum', 26, -81, 0], ['crate', 40, -80, 0.2], ['crate', 40.6, -80.6, 1.1], ['crate', 54, -74, 0.4],
+    ['trash', 31, -82, 0], ['trash', 60, -66.8, 0], ['barrier', 49, -79, 0.1], ['barrier', 36, -79, 1.4],
+    ['car', 58, -81.5, 0.1], ['utility', 77.3, -90, -Math.PI / 2], ['fire', 44, -70.5, 0], ['bag', 20, -81, 0], ['box', 9, -81, 0],
+  ],
+  // 7 CONTAINER YARD (+ shed)
+  () => [
+    ['container', 58, -124.5, 0.3],
+    ['barrel', 50, -104, 0], ['barrel', 50.6, -104.6, 1], ['barrel', 68, -95.5, 0], ['barrel', 78, -120, 0],
+    ['crate', 41.5, -95, 0.2], ['crate', 42, -95.7, 1], ['crate', 66, -111, 0.5], ['trash', 79, -98, 0], ['trash', 42, -134, 0],
+    ['barrier', 60, -95, 0.1], ['barrier', 48, -121, 1.5], ['drum', 71, -134, 0], ['drum', 55, -112, 0],
+    ['bag', 18, -111, 0], ['bag', 37, -121, 0], ['box', 22, -121, 0], ['box', 30, -111.3, 0], ['car', 72, -106, 0.2],
+  ],
+  // 8 PIER 9 DOCKS
+  () => [
+    ['container', -6, -106, 0.15], ['container', 2.6, -121.6, -0.1], ['car', -11, -116, 0.6],
+    ['barrier', -3, -99.2, 0], ['barrier', 6, -103, 1.2], ['barrier', -14, -108.5, 0.3],
+    ...[[3.5, -100.5], [4.2, -101.3], [-9.6, -112.3], [-10.3, -113], [0.5, -126.6]].map(([x, z]) => ['barrel', x, z, R()]),
+    ['crate', -16.5, -103.6, 0.1], ['crate', -15.9, -104.3, 0.9], ['crate', -15.2, -121, 0.3], ['crate', 4.4, -127.7, 0], ['crate', 5.2, -127.4, 0.6], ['crate', -16.2, -103.95, 0.5, 0.57],
+    ['trash', 12.6, -104, 0], ['trash', -17.8, -126.5, 0], ['trash', 12.5, -129, 0], ['drum', -5.5, -126, 0], ['drum', 7.2, -109, 0],
+    ['fire', -1.5, -114, 0], ['utility', 13.1, -100.5, -Math.PI / 2],
+    ['bag', -18, -118, 0], ['bag', 10.8, -95.6, 0], ['bag', -7.8, -95.4, 0], ['box', -17.4, -118.8, 0], ['box', 9.6, -95.8, 0],
+  ],
+  // 9 FERRY PIER
+  () => [
+    ['crate', -35, -106, 0.2], ['crate', -35.6, -106.6, 1], ['crate', -50, -118, 0.4], ['barrel', -28, -118, 0], ['barrel', -28.6, -117.4, 1],
+    ['trash', -44, -104.8, 0], ['trash', -26, -104.6, 0], ['barrier', -40, -112, 0.1], ['barrier', -48, -108, 1.4],
+    ['drum', -55, -105, 0], ['drum', -48, -118.6, 0], ['bag', -60, -105, 0], ['box', -59.5, -118.8, 0], ['fire', -33, -112, 0],
+  ],
+];
+export function populateZone(i) {
+  const list = ZONE_PROPS[i] ? ZONE_PROPS[i]() : [];
+  const out = [];
+  for (const [t, x, z, r = 0, y = null] of list) { const o = makeProp(t, x, z, r, y); o.zone = i; out.push(o); }
+  return out;
 }

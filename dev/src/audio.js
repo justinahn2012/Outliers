@@ -184,6 +184,10 @@ export const sfx = {
     if (!ctx) return; const t = ctx.currentTime;
     [523, 659, 784, 1047].forEach((f, i) => tone(t + i * 0.07, 0.4, 'triangle', f, f, 0.1, 0.005));
   },
+  stamp() {
+    if (!ctx) return; const t = ctx.currentTime;
+    tone(t, 0.08, 'square', 300, 120, 0.08, 0.001); noise(t, 0.06, 'lowpass', 1800, 300, 1, 0.25, 0.001);
+  },
   ink() {
     if (!ctx) return; const t = ctx.currentTime;
     noise(t, 0.25, 'bandpass', 180, 220, 8, 0.25, 0.01); tone(t, 0.18, 'square', 90, 90, 0.04, 0.005);

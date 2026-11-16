@@ -15,14 +15,14 @@ export const MAX_RANK = 3, MAX_LEVEL = 20;
 export const xpToNext = (lv) => 100 + (lv - 1) * 60;
 
 const KEY = 'outliers.overclock.save.v1';
-export const P = { level: 1, xp: 0, points: 0, ranks: {}, checkpoint: 0, done: false };
+export const P = { level: 1, xp: 0, points: 0, ranks: {}, checkpoint: 0, done: false, frags: [] };
 for (const s of SKILLS) P.ranks[s.id] = 0;
 
 export function load() {
   try {
     const raw = localStorage.getItem(KEY); if (!raw) return;
     const d = JSON.parse(raw);
-    Object.assign(P, { level: d.level | 0 || 1, xp: d.xp | 0, points: d.points | 0, checkpoint: d.checkpoint | 0, done: !!d.done });
+    Object.assign(P, { level: d.level | 0 || 1, xp: d.xp | 0, points: d.points | 0, checkpoint: d.checkpoint | 0, done: !!d.done, frags: Array.isArray(d.frags) ? d.frags.slice(0, 200) : [] });
     for (const s of SKILLS) P.ranks[s.id] = Math.min(MAX_RANK, (d.ranks && d.ranks[s.id]) | 0);
   } catch (e) { /* private mode or blocked storage: play without saving */ }
 }
@@ -41,7 +41,7 @@ export function buy(id) {
   if (P.points <= 0 || rank(id) >= MAX_RANK) return false;
   P.ranks[id]++; P.points--; save(); return true;
 }
-export function resetAll() { P.level = 1; P.xp = 0; P.points = 0; P.checkpoint = 0; P.done = false; for (const s of SKILLS) P.ranks[s.id] = 0; save(); }
+export function resetAll() { P.level = 1; P.xp = 0; P.points = 0; P.checkpoint = 0; P.done = false; P.frags = []; for (const s of SKILLS) P.ranks[s.id] = 0; save(); }
 
 // derived stats
 export const stat = {

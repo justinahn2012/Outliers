@@ -13,7 +13,39 @@ export const ETYPES = {
   marksman: { hp: 50,  speed: 3.4, mass: 75,  scale: 1.0,  model: 'marksman', clips: FEMALE, stagger: 12, grip: true, label: 'MARKSMAN', walkRef: 1.45, runRef: 5.2 },
   lobber:   { hp: 55,  speed: 3.2, mass: 85,  scale: 1.04, model: 'counter',  clips: MALE,   stagger: 14, grip: true, label: 'LOBBER', walkRef: 1.5, runRef: 5.0 },
   auditor:  { hp: 520, speed: 2.5, mass: 650, scale: 1.62, model: 'auditor',  clips: { idle: 'aud_idle', walk: 'aud_walk', run: 'aud_run' }, stagger: 9999, grip: false, label: 'AUDITOR', walkRef: 1.3, runRef: 4.0 },
+  warden:   { hp: 95,  speed: 2.7, mass: 110, scale: 1.08, model: 'counter',  clips: MALE,   stagger: 26, grip: true, label: 'WARDEN', walkRef: 1.5, runRef: 5.0, shield: true },
+  informant:{ hp: 40,  speed: 5.6, mass: 70,  scale: 0.97, model: 'counter',  clips: MALE,   stagger: 6,  grip: true, label: 'INFORMANT', walkRef: 1.5, runRef: 5.0 },
+  clerk:    { hp: 26,  speed: 4.4, mass: 10,  scale: 1.0,  drone: 'clerk', stagger: 1, grip: true, label: 'CLERK', hover: 2.5 },
+  lamplighter: { hp: 640, speed: 3.0, mass: 400, scale: 1.0, drone: 'lamp', stagger: 9999, grip: false, label: 'LAMPLIGHTER', hover: 7.5, boss: true },
 };
+
+// Census drones: a small Clerk (stamps objects so they can't be lifted) and the big Lamplighter searchlight
+function droneVisual(kind) {
+  const big = kind === 'lamp', S = big ? 2.6 : 1;
+  const g = new THREE.Group(); const mats = [];
+  const shell = new THREE.MeshStandardMaterial({ color: big ? 0x2a2e34 : 0x3a3f46, metalness: 0.75, roughness: 0.35, emissive: 0x000000 }); mats.push(shell);
+  const amber = new THREE.MeshStandardMaterial({ color: 0x221000, emissive: big ? 0xffffff : 0xff8a20, emissiveIntensity: big ? 2.2 : 1.6 }); mats.push(amber);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55 * S, 0.2 * S, 0.55 * S), shell); body.castShadow = true; g.add(body);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.2 * S, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), shell); dome.position.y = 0.1 * S; g.add(dome);
+  const rotors = [];
+  for (const [ax, az] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5 * S, 0.05 * S, 0.06 * S), shell); arm.position.set(ax * 0.32 * S, 0.02 * S, az * 0.32 * S); arm.rotation.y = Math.atan2(az, ax); g.add(arm);
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * S, 0.2 * S, 0.012 * S, 16), new THREE.MeshBasicMaterial({ color: 0x9aa0a8, transparent: true, opacity: 0.35, depthWrite: false })); r.position.set(ax * 0.52 * S, 0.07 * S, az * 0.52 * S); g.add(r); rotors.push(r);
+  }
+  const lamp = new THREE.Mesh(big ? new THREE.CylinderGeometry(0.22 * S, 0.3 * S, 0.3 * S, 16) : new THREE.SphereGeometry(0.08, 10, 8), amber); lamp.position.y = -0.14 * S; g.add(lamp);
+  if (!big) { const stamp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.16), amber); stamp.position.y = -0.2; g.add(stamp); }
+  return { g, mats, rotors };
+}
+let spotTex = null;
+function spotTexture() {
+  if (spotTex) return spotTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  const gr = x.createRadialGradient(64, 64, 4, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.7, 'rgba(255,255,255,0.45)'); gr.addColorStop(0.92, 'rgba(255,255,255,0.8)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 128, 128); return (spotTex = new THREE.CanvasTexture(c));
+}
+const shieldGeo = new THREE.BoxGeometry(0.82, 1.3, 0.07);
+const shieldMat = new THREE.MeshStandardMaterial({ color: 0x1a2028, metalness: 0.3, roughness: 0.12, transparent: true, opacity: 0.82, envMapIntensity: 1.5 });
+const shieldStripe = new THREE.MeshStandardMaterial({ color: 0x221000, emissive: 0xff8a20, emissiveIntensity: 1.3 });
 
 let ringTex = null;
 function threatRing(scale) {
@@ -38,6 +70,7 @@ const rifleMat = new THREE.MeshStandardMaterial({ color: 0x15171a, metalness: 0.
 
 export function spawnEnemy(type, x, z) {
   const def = ETYPES[type];
+  if (def.drone) return spawnDrone(type, def, x, z);
   const c = makeCharacter(def.model, def.clips);
   const s = def.scale;
   const root = new THREE.Group(); const model = new THREE.Group(); root.add(model); model.add(c.obj);
@@ -58,6 +91,7 @@ export function spawnEnemy(type, x, z) {
     gear.glow.scale.setScalar(type === 'auditor' ? 0.6 : 0.32); G.scene.add(gear.glow);
   }
   if (type === 'marksman') { gear.rifle = new THREE.Mesh(rifleGeo, rifleMat); gear.rifle.castShadow = true; G.scene.add(gear.rifle); }
+  if (type === 'informant') for (const m of c.mats) { if (m.color) m.color.multiply(new THREE.Color(1.6, 1.25, 0.8)); }
   if (type === 'lobber') {
     gear.pack = new THREE.Group();
     for (const k of [-1, 0, 1]) { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.28, 10), new THREE.MeshStandardMaterial({ color: 0x3a4a30, emissive: 0x58ff40, emissiveIntensity: 0.8, metalness: 0.5, roughness: 0.4 })); m.position.set(k * 0.12, 0, 0); gear.pack.add(m); }
@@ -78,11 +112,52 @@ export function spawnEnemy(type, x, z) {
   };
   body.userData = e;
   model.scale.setScalar(0.01);
+  if (def.shield) {
+    const sh = new THREE.Group(); const p = new THREE.Mesh(shieldGeo, shieldMat); p.castShadow = true; sh.add(p);
+    const st = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.1, 0.075), shieldStripe); st.position.y = 0.42; sh.add(st);
+    sh.position.set(0.05 * s, 0.05 * s, 0.55 * s); root.add(sh); e.shield = sh; e.shieldUp = true;
+  }
   G.enemies.push(e);
   if (type === 'marksman') {
     e.laser = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.4, 0.2), transparent: true, opacity: 0, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending }));
     e.laser.renderOrder = 12; G.scene.add(e.laser);
   }
+  return e;
+}
+
+function spawnDrone(type, def, x, z) {
+  const V = droneVisual(def.drone);
+  const root = new THREE.Group(); root.add(V.g); G.scene.add(root);
+  const hb = bar(); root.add(hb.bg); root.add(hb.fg);
+  const s = def.drone === 'lamp' ? 2.6 : 1;
+  const ring = threatRing(def.drone === 'lamp' ? 2.4 : 0.8); G.scene.add(ring);
+  const blob = blobShadow(def.drone === 'lamp' ? 3 : 0.9); G.scene.add(blob);
+  const body = new CANNON.Body({ mass: def.mass, material: G.charMat, fixedRotation: true, linearDamping: 0.2, angularDamping: 0.4, collisionFilterGroup: GRP.ENEMY, collisionFilterMask: ALL, allowSleep: false });
+  body.addShape(new CANNON.Sphere(def.drone === 'lamp' ? 1.35 : 0.36));
+  body.position.set(x, def.hover, z); G.world.addBody(body);
+  const gear = {};
+  if (def.drone === 'lamp') {
+    const spot = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: spotTexture(), color: new THREE.Color(1.6, 1.7, 1.9), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    spot.rotation.x = -Math.PI / 2; spot.renderOrder = 6; G.scene.add(spot); gear.spot = spot;
+    const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 1, 1, 24, 1, true), new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      uniforms: { uCol: { value: new THREE.Color(0.8, 0.85, 1.0) } },
+      vertexShader: 'varying float vY; varying vec3 vN; varying vec3 vV; void main(){ vY = uv.y; vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'uniform vec3 uCol; varying float vY; varying vec3 vN; varying vec3 vV; void main(){ float e = pow(abs(dot(vN, vV)), 1.4); gl_FragColor = vec4(uCol * 0.16 * (0.3 + vY) * e, 1.0); }',
+    }));
+    cone.renderOrder = 14; G.scene.add(cone); gear.cone = cone;
+  }
+  const e = {
+    kind: 'enemy', type, def, root, model: V.g, char: null, bones: null, gear, hb, ring, blob, body, stepT: 0, mass: def.mass, radius: def.drone === 'lamp' ? 1.5 : 0.45, hh: 0.3 * s,
+    hp: def.hp, maxHp: def.hp, state: 'spawn', stateT: 0, atkCD: rand(1, 2), yaw: 0, fly: true, rotors: V.rotors,
+    dead: false, alive: true, held: null, thrown: false, thrownT: 0, antiGrav: 0,
+    lastHit: new Map(), prev: new THREE.Vector3(x, def.hover, z), stuckT: 0, sideSteer: 0, flinch: 0, hpShow: 0,
+    downT: 0, fade: 1, strafe: Math.random() < 0.5 ? -1 : 1, spawnT: 0, stun: 0, spotP: new THREE.Vector3(x, 0, z), countT: 0,
+    glowMats: V.mats.map(m => { m.userData.base = (m.emissive || new THREE.Color()).clone(); m.userData.baseI = m.emissiveIntensity ?? 1; return m; }), glow: 0, flailPh: 0,
+  };
+  body.userData = e;
+  V.g.scale.setScalar(0.01);
+  G.enemies.push(e);
   return e;
 }
 
@@ -119,6 +194,7 @@ const _q = new THREE.Quaternion(), _up = new THREE.Vector3(0, 1, 0), _p = new TH
 const _e = new THREE.Euler();
 
 export function updateEnemyVisual(e, dt) {
+  if (e.def.drone) return updateDroneVisual(e, dt);
   const b = e.body, B = e.bones, s = e.def.scale;
   e.root.position.set(b.position.x, b.position.y, b.position.z);
   // glitch: the body stutters sideways and drops frames, like corrupted video
@@ -144,7 +220,7 @@ export function updateEnemyVisual(e, dt) {
   const hp = G.hero.body.position;
   const fx = Math.sin(e.yaw), fz = Math.cos(e.yaw);
   if (!limp && !e.dead) {
-    if (e.type === 'counter' && (e.state === 'windup' || e.state === 'strike')) {
+    if ((e.type === 'counter' || e.type === 'warden') && (e.state === 'windup' || e.state === 'strike')) {
       B.rU.getWorldPosition(_p);
       if (e.state === 'windup') _t.set(_p.x - fx * 0.4, _p.y + 1.3, _p.z - fz * 0.4); else _t.set(hp.x, 0.9, hp.z);
       aimArm(B.rU, B.rF, B.rH, _t, 1);
@@ -218,5 +294,41 @@ export function updateEnemyVisual(e, dt) {
     e.hb.bg.position.copy(off); e.hb.fg.position.copy(off);
     e.hb.bg.scale.set(w, 0.08, 1); e.hb.fg.scale.set(w * clamp(e.hp / e.maxHp, 0, 1), 0.08, 1);
     e.hb.fg.material.color.set(e.type === 'auditor' ? 0xff3030 : 0xffd0d0);
+  }
+}
+
+function updateDroneVisual(e, dt) {
+  const b = e.body, big = e.def.drone === 'lamp';
+  e.root.position.set(b.position.x, b.position.y, b.position.z);
+  if (b.fixedRotation) { const tilt = Math.min(0.35, Math.hypot(b.velocity.x, b.velocity.z) * 0.05); _q.setFromEuler(_e.set(b.velocity.z * 0.03 * (big ? 0.3 : 1), e.yaw, -b.velocity.x * 0.03 * (big ? 0.3 : 1))); e.root.quaternion.slerp(_q, damp(8, dt)); if (tilt < 0) e.root.quaternion.identity(); }
+  else e.root.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+  for (const r of e.rotors) r.rotation.y += dt * (e.dead ? 4 : 40);
+  if (e.state === 'spawn') e.model.scale.setScalar(Math.min(1, 0.01 + e.spawnT * 2));
+  else e.model.scale.setScalar(Math.max(0.01, e.fade));
+  if (e.glitchT > 0) { e.glitchT -= dt; e.root.visible = e.glitchT <= 0 || Math.random() > 0.2; if (e.glitchT > 0) { e.root.position.x += (Math.random() - 0.5) * 0.3; } } else e.root.visible = true;
+  // health bar
+  const show = e.hpShow > 0 || big;
+  e.hpShow -= dt;
+  const w = big ? 3.2 : 0.8, k = clamp(e.hp / e.maxHp, 0, 1);
+  e.hb.bg.visible = e.hb.fg.visible = show && !e.dead;
+  if (show) {
+    const y = big ? 1.9 : 0.6;
+    _q.copy(e.root.quaternion).invert();
+    e.hb.bg.position.set(-w / 2, y, 0).applyQuaternion(_q); e.hb.fg.position.set(-w / 2, y, 0).applyQuaternion(_q);
+    e.hb.bg.scale.set(w, big ? 0.16 : 0.08, 1); e.hb.fg.scale.set(w * k, big ? 0.16 : 0.08, 1);
+  }
+  e.ring.position.set(b.position.x, 0.025, b.position.z); e.ring.material.opacity = e.dead ? 0 : 0.5 * e.fade; e.ring.visible = !big;
+  e.blob.position.set(b.position.x, 0.02, b.position.z); e.blob.material.opacity = 0.5 * e.fade;
+  if (big && e.gear.spot) {
+    const sp = e.spotP, R = e.spotR || 2.6;
+    e.gear.spot.position.set(sp.x, 0.05, sp.z); e.gear.spot.scale.setScalar(R * 2);
+    const hot = e.countT > 0 ? Math.min(1, e.countT / 1.4) : 0;
+    e.gear.spot.material.color.setRGB(1.5 + hot * 1.6, 1.6 - hot * 1.1, 1.9 - hot * 1.5);
+    e.gear.spot.visible = e.gear.cone.visible = !e.dead && e.state !== 'spawn';
+    const top = new THREE.Vector3(b.position.x, b.position.y - 0.6, b.position.z), bot = new THREE.Vector3(sp.x, 0, sp.z);
+    const len = top.distanceTo(bot);
+    e.gear.cone.position.copy(top).lerp(bot, 0.5); e.gear.cone.scale.set(R, len, R);
+    e.gear.cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), bot.sub(top).normalize());
+    e.gear.cone.material.uniforms.uCol.value.setRGB(0.8 + hot, 0.85 - hot * 0.5, 1.0 - hot * 0.7);
   }
 }

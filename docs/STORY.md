@@ -31,6 +31,26 @@
 - **Evil megacorp.** The Census is a utility people love. The villain is a vote.
 - **Amnesiac hero, chip in the brain.** Her memory loss is fuel, not backstory. The chip doesn't control you; it agrees on your behalf.
 
+
+### Backstory: the Halden Protocol
+
+**Why the Census overclocked anyone.** Final Count needs every mind reporting *present*. By 2058 the count stalled at 99.99%: a few hundred Outliers whose brains sit too far from the median for the Tally to sync. They can't be counted, and their chips *write*. Each one is a standing "no" vote, and the commit needs unanimity. The Census could subtract people from the denominator, which it secretly did to the Tidelines (60,000 people, filed as a flood), or convert them. Registrar Weil chose conversion as the merciful option: the **Halden Protocol** on Halden Island pushes an Outlier's chip faster than their own thoughts until the brain gives up and syncs. For Weil it's personal: her son vanished at nine.
+
+**Why Iris was there.** Her arm says `FOR THE MONEY`. The truth: as a loss adjuster she kept processing Tidelines flood claims that came back *property does not exist*. The flood killed nobody, yet 60,000 policyholders vanished from the rolls. She tested as an Outlier and volunteered to find out where they went. Dash, Subject One, was already there.
+
+**How she broke out.** The overclock worked on Dash too well: he became read-only, can't stop counting, and the Census rebuilt him as the Auditor. On Iris it worked backwards: chip and cortex fused and ran faster than the city's tick, so she could write to the Ledger. On the last night she deleted Halden's records, every subject file, and herself. A person with no record who can still write means Final Count can never commit. She *is* the hole in the system. Then she burned the memory of choosing it, so a captured, mind-read Iris would have nothing to give up. She inked the clues on her arm first.
+
+**Why they hunt her quietly.** Publicly she can't exist: admitting her would expose 99.9997% as a lie. Privately they must catch her and force her to sync before Final Count.
+
+### Is Iris the villain?
+
+From inside the Common, yes. Four million people chose a shared reality and it works. Iris opted out and keeps breaking it for everyone else. Let that argument land:
+- **Weil is right about the harm.** Her case is mercy, not control, and she argues it well.
+- **Surge has collateral.** Bystanders caught in a Surge glitch, lose a moment and get desync-sick. Later chapters show streets her edits never fully healed.
+- **The consensus has a hidden cost too.** Agreement was only unanimous because the Census deleted the people who disagreed. The Tidelines are the bill for 99.9997%.
+- **The real question:** does a consensus count if it had to remove everyone who said no? Iris is the remainder that proves the sum is wrong; the player decides whether that makes her the hero.
+- **The endings carry it:** COMMIT (Weil was right), DIVIDE BY ZERO (the city sees itself unedited, at a price), OPEN LEDGER (everyone gets her power, and her problem).
+
 ---
 
 ## 3. Null
