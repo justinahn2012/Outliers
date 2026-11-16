@@ -1,11 +1,12 @@
 // Chapter 1 — UNCOUNTED. Ten areas, ~45-60 minutes. Every element obeys the five rules in docs/STORY.md:
 //  - The Census is running a COUNT SWEEP for a heat signature with no Tally (Iris). It seals the district into cells.
-//  - CHECKPOINTS (the amber walls) are agreement walls: solid because every Census mind nearby agrees they're there
-//    (Rules 1+4). Iris can't edit one away while a squad is holding it; clear the squad and nobody is left to agree.
-//  - RELAYS carry the sweep's agreement across the district. They rewrite themselves if she edits them, so she
-//    smashes them with real, heavy objects instead.
-//  - WARDEN shields are Ledger-locked (no grip through them); Surge's raw writes break the lock.
-//  - CLERKS stamp temporary Census locks into objects so she can't lift them (locks fade, Rule 4).
+//  - CHECKPOINTS (the amber walls) are CORDON ORDERS in the Ledger. Every chip in the city honors them, so they're
+//    solid (Rule 1). Iris could delete one, but it's a heavy record: it would cost a memory she'd miss (Rule 3), and
+//    while the order is still being renewed the city agrees it straight back (Rule 4). Cordons must be renewed by
+//    officers on station or by relay uplink. Clear the officers / smash the relays and the order lapses.
+//  - RELAYS are the Census uplink that renews cordons for a block. Edit one and it's agreed back; a thrown car isn't.
+//  - WARDEN shields carry their own lock order (no grip through them); Surge floods it with raw writes.
+//  - CLERKS stamp temporary lock orders into objects so she can't lift them (orders expire).
 //  - The LAMPLIGHTER's beam counts by sight, chip or no chip.
 //  - The AUDITOR (Dash) overheats; his armor is a freezer, so he walks into the sea to cool down, then comes back.
 //  - Her goal all chapter: reach Moth's, below Pier 9, before she forgets the way. Moth's door is in the old ferry terminal.
@@ -21,37 +22,37 @@ export const CHAPTER = {
       steps: [
         { kind: 'wave', sub: 'THE CENSUS IS COUNTING', list: ['counter', 'counter', 'counter'], say: [['radio', 'Count sweep, Harrow Street. Heat signature, no Tally. Find it. Count it.']] },
         { kind: 'wave', sub: 'MARKSMEN — HOLD SOMETHING UP TO BLOCK', list: ['counter', 'marksman', 'counter', 'marksman'],
-          say: [['rem', 'Those amber walls are checkpoints. Every Census mind on this street agrees they are there, so they are.'], ['rem', 'Rifles. Put something between you and them. Something with paperwork.']] },
+          say: [['rem', "Those amber walls are cordon orders. Every chip in the city honors them, so they're solid."], ['rem', 'Rifles. Put something between you and them. Something with paperwork.']] },
         { kind: 'wave', sub: 'THEY BROUGHT FRIENDS', list: ['counter', 'counter', 'marksman', 'counter', 'counter'],
-          say: [['rem', "I can't edit a checkpoint while a squad is holding it. Clear the street and nobody's left to agree."]] },
+          say: [['rem', 'I could delete that wall. It would cost you a memory you would miss, and the city would agree it right back.'], ['rem', 'But a cordon needs officers on station. No officers, no order. Clear the street.']] },
       ],
       clear: [['radio', "Harrow sweep came back... minus one. That's not a number."], ['null', 'It is now.'],
-        ['rem', 'The side-street checkpoint just lost its count. The market arch is held from the other side, too many minds. We go around, through the plaza.']],
+        ['rem', 'No officers, no order. The side-street cordon lapsed. The market arch is staffed from the other side, so we go around, through the plaza.']],
       next: 'EAST TO THE PLAZA',
       frags: [[-11.6, 23.4, 'An insurance file. Claim 4471, water damage, Tidelines, 2052. Status: DENIED. Property does not exist.'], [11.2, -26.2, "Mom's piano. The C sharp sticks. She'd hit it twice and laugh."]],
     },
     { // 1 CHECKPOINT PLAZA
       spawns: [[60, -28], [60, 2], [46, -28.5], [60, -12], [46, 2.5], [32, -28.5], [32, 2.5]],
       enter: [['weil', 'Good evening, Cantor Sound. We are ninety-nine point nine nine nine seven percent of the way home.'], ['weil', "If you see someone who isn't counted, help them. Report them."],
-        ['rem', 'Those towers are Tally relays. They carry the sweep across the whole district. Every checkpoint on this block hangs off them.']],
+        ['rem', "Those towers are Tally relays: the Census uplink for this block. Every cordon nearby gets renewed through them."]],
       steps: [
         { kind: 'relays', sub: 'SMASH THE TALLY RELAYS', list: ['warden', 'counter', 'counter'], trickle: ['counter', 'marksman', 'warden', 'counter'], every: 14,
-          say: [['rem', "I can't edit a relay. It rewrites itself. It can't rewrite a car."], ['rem', "Shields are Ledger-locked, so I can't get a grip through them. Surge breaks the lock. Or hit them from behind."]] },
+          say: [['rem', "If I edit a relay, the city agrees it straight back. It can't agree back a car."], ['rem', "Warden shields carry their own lock order, so I can't get a grip. Surge floods it. Or hit them from behind."]] },
         { kind: 'wave', sub: 'WARDENS', list: ['warden', 'warden', 'marksman', 'counter'], say: [['radio', 'Relays down on the plaza. Wardens, hold the count by hand.']] },
       ],
       clear: [['rook', "This is Inspector Rook. Whoever you are, you just blinded a whole block. I'd like to talk."], ['null', 'Count yourself lucky.'],
-        ['rem', 'No relays, no squad. The tram cut checkpoint has nothing holding it up.']],
+        ['rem', 'No relays, no renewals. The tram cut cordon just expired.']],
       next: 'TAKE THE TRAM CUT',
       frags: [[61.2, 3.2, "The Halden consent form. Your signature. Someone else's handwriting on the line that says WHY."], [30.8, -29.2, 'A tram ticket to Pier 9, punched forty-one times.']],
     },
     { // 2 TRAM CUT
       spawns: [[9, -45], [12, -43], [20, -47], [26, -43], [41, -43], [47, -46], [47, -40]],
-      enter: [['rem', "Clerks. They stamp a Census lock into anything near you so you can't lift it. Locks fade. And Clerks are light. Throw them."]],
+      enter: [['rem', "Clerks. They stamp temporary lock orders into anything near you so you can't lift it. Orders expire. And Clerks are light. Throw them."]],
       steps: [
         { kind: 'wave', sub: 'CLERKS', list: ['clerk', 'clerk', 'counter', 'counter'] },
         { kind: 'wave', sub: 'AMBUSH', list: ['marksman', 'marksman', 'clerk', 'counter', 'lobber'], say: [['radio', 'Contact in the tram cut. Box it in.']] },
       ],
-      clear: [['null', 'Stamped. Filed. Flung.'], ['rem', 'That checkpoint opens onto the market. Nobody left to hold it.']],
+      clear: [['null', 'Stamped. Filed. Flung.'], ['rem', 'That cordon was renewed from here. Not anymore. The market is open.']],
       next: 'INTO THE MARKET',
       frags: [[8.6, -47.5, "Dash, laughing in a hospital corridor: 'Count to ten, Iris. Bet you can't.'"], [49.3, -47.4, "Your first tattoo. Moth's hands shaking. 'Hold still. This one's important.'"]],
     },
@@ -81,10 +82,10 @@ export const CHAPTER = {
     { // 5 GUT LANE
       spawns: [[-2.5, -90.5], [2.5, -90.5], [0, -89], [-3.4, -82], [3.4, -86], [0, -66]],
       enter: [['null', 'Someone painted my mark. My zero.'], ['rem', 'You did. Tuesday. You forgot.'],
-        ['rem', 'That checkpoint at the end goes straight to Pier 9. The Pier 9 garrison holds it, too many minds. We go around, through the yards.']],
+        ['rem', 'That cordon at the end goes straight to Pier 9. A whole garrison keeps renewing it. We go around, through the yards.']],
       steps: [
         { kind: 'wave', sub: 'GUT LANE', list: ['lobber', 'counter', 'lobber', 'counter', 'marksman'], say: [['radio', 'Contact in Gut Lane. Pin it down. Grenades authorized.']] },
-        { kind: 'wave', sub: 'SHIELD WALL', list: ['warden', 'warden', 'counter', 'lobber'], say: [['rem', 'Two locked shields in a narrow lane. Surge.']] },
+        { kind: 'wave', sub: 'SHIELD WALL', list: ['warden', 'warden', 'counter', 'lobber'], say: [['rem', 'Two lock orders in a narrow lane. Surge.']] },
       ],
       clear: [['radio', 'All units: lockdown in the rail yard. Lamplighter dispatched.'], ['rem', "Then we'd better be inside it."]],
       next: 'EAST TO THE RAIL YARD',
@@ -133,7 +134,7 @@ export const CHAPTER = {
         { kind: 'auditor2', sub: 'AUDIT', list: ['auditor', 'counter', 'marksman', 'lobber', 'warden'], reinforce: ['counter', 'marksman', 'counter', 'clerk'],
           say: [['rem', "Water on three sides. He's heavy. Heavy things sink. He'll survive it. He always does."]] },
       ],
-      clear: [['null', '...He said one.'], ['radio', 'Sweep terminated. Count stands at minus one.'], ['rem', "Every checkpoint in the district just lost its count. Moth's door, Iris."]],
+      clear: [['null', '...He said one.'], ['radio', 'Sweep terminated. Count stands at minus one.'], ['rem', "Sweep's over. Every cordon in the district just lapsed. Moth's door, Iris."]],
       next: "MOTH'S DOOR",
       frags: [[-61.4, -104.6, 'The last ferry to Halden. You were on it. You came back alone.'], [-61.4, -119.4, "Dash in the armor for the first time. 'One,' he says. 'I count you as one.'"]],
     },
@@ -141,7 +142,7 @@ export const CHAPTER = {
   reinforce: [['radio', 'Reinforcements to the pier. Keep her counted.']],
   auditorRetreat: [['auditor', 'Overheating. Re-provisioning.'], ['rem', "His armor's a freezer. He's walking into the sea to cool his head."]],
   auditorDown: [['auditor', '...One.']],
-  wardenShield: [['rem', "Lock's broken. It's just a shield now. Pick it up. It works for us."]],
+  wardenShield: [['rem', "Lock order's gone. It's just a shield now. Pick it up. It works for us."]],
   lamplighterHalf: [['radio', 'Lamplighter is taking damage. Clerks, assist.']],
   chaseCaught: [['rook', "Got him. Moth's address never made it in. I owe you one, whoever you are."]],
   chaseLost: [['radio', 'Informant reporting. Address confirmed: below Pier 9. All units converge.'], ['rem', 'He got through. They know about Moth now. Move.']],
