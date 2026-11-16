@@ -84,7 +84,7 @@ export const CHAPTER = {
         { kind: 'lamplighter', sub: 'THE LAMPLIGHTER', list: ['lamplighter', 'counter', 'marksman'], adds: ['clerk', 'clerk', 'counter'],
           say: [['radio', 'Lamplighter, count the yard.'], ['rem', "If its light stays on you, it counts you. Keep out of the beam and throw high."]] },
       ],
-      clear: [['rook', "...You took down a Lamplighter. They'll send the Auditor now."], ['null', 'Let them.']],
+      clear: [['rook', "I watched you stop time out there. The feed says I didn't. I'm choosing to believe my eyes."], ['rook', "You took down a Lamplighter. They'll send the Auditor now."], ['null', 'Let them.']],
       next: 'NORTH TO THE CONTAINER YARD',
       frags: [[77.4, -66.6, 'A boxcar manifest: 60,000 units. Origin: Tidelines. Destination: DENOMINATOR.'], [5.2, -81.5, "Halden Island from the ferry. You were holding someone's hand. You can't see whose."]],
     },
@@ -132,7 +132,7 @@ export const CHAPTER = {
   chaseLost: [['radio', 'Informant reporting: target in the container yard. All units converge.'], ['rem', "He got away. Now they know where we are."]],
   rescueOne: [['moth', "That's one. Go, go, go."]],
   ending: [
-    ['moth', "You're late. Arm."],
+    ['moth', "You're late. Sit. Arm."],
     ['null', 'How many?'],
     ['moth', 'Forty-two marks. One more than this morning.'],
     ['null', 'What did I lose?'],

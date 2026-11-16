@@ -1,6 +1,6 @@
 # OUTLIERS: Overclock
 
-Touch-first telekinesis brawler. Iris Calloway, codename **Null**, was erased by the Census and can now edit reality like data: she lifts, swings, flicks and shields with anything on a rain-soaked street while the Census hunts her. Story bible: [`docs/STORY.md`](docs/STORY.md).
+Touch-first telekinesis brawler. Iris Calloway, codename **Null**, was erased by the Census and can now edit reality like data: she lifts, swings, flicks and shields with anything on a rain-soaked street while the Census hunts her. Story bible: [`docs/STORY.md`](docs/STORY.md) (v2, tight; first draft in `docs/STORY_v1.md`).
 
 Chapter 1 *Uncounted* (about 45–60 minutes): Harrow Street → Checkpoint Plaza → Tram Cut → Pier 9 Market → Cold Storage → Gut Lane → Rail Yard → Container Yard → Pier 9 → Ferry Pier → below Pier 9. Checkpoints per area, XP and levels, and a skill tree inked on her arm; progress saves on the device.
 
