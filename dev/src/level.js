@@ -189,17 +189,25 @@ function pbr(prefix, rx, ry, extra = {}) {
 
 // ---------- level ----------
 export function buildLevel(scene, world, wet) {
-  const L = { lights: [], update: null, lampHeads: [] };
+  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [] };
+  // Every lamp, neon and lantern registers a light "spot"; only the POOL nearest the camera get a real
+  // point light each frame, so the shader cost stays flat however big the world gets.
+  const spots = L.spots;
+  const addSpot = (x, y, z, color, intensity, distance, decay = 1.6, flick = 0) => { const s = { p: new THREE.Vector3(x, y, z), c: new THREE.Color(color), i: intensity, d: distance, decay, flick, k: 1 }; spots.push(s); return s; };
+  const POOL = [];
+  for (let i = 0; i < 8; i++) { const l = new THREE.PointLight(0xffffff, 0, 10, 1.6); scene.add(l); POOL.push(l); }
   const groundMat = new CANNON.Material('ground');
   G.groundMat = groundMat;
   const ground = new CANNON.Body({ mass: 0, material: groundMat, collisionFilterGroup: GRP.GROUND, collisionFilterMask: ALL });
-  ground.addShape(new CANNON.Box(new CANNON.Vec3(45, 0.5, 42)), new CANNON.Vec3(0, -0.5, -17.4));
+  ground.addShape(new CANNON.Box(new CANNON.Vec3(45, 0.5, 58.5)), new CANNON.Vec3(0, -0.5, -33.9));      // z 24.6 .. -92.4
+  ground.addShape(new CANNON.Box(new CANNON.Vec3(17.6, 0.5, 19.1)), new CANNON.Vec3(-3.0, -0.5, -111.5)); // Pier 9 docks: x -20.6..14.6, z -92.4..-130.6
   world.addBody(ground); G.groundBody = ground;
   const wall = (cx, cy, cz, hx, hy, hz) => {
     const b = new CANNON.Body({ mass: 0, material: groundMat, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL });
     b.addShape(new CANNON.Box(new CANNON.Vec3(hx, hy, hz))); b.position.set(cx, cy, cz); world.addBody(b); return b;
   };
-  wall(-13.6, 15, -5, 1, 15, 40); wall(13.6, 15, -5, 1, 15, 40); wall(0, 15, -27.4, 16, 15, 1);
+  wall(-13.6, 15, -5, 1, 15, 30); wall(13.6, 15, -5, 1, 15, 30);
+  wall(-11.8, 15, -27.4, 4.2, 15, 1); wall(11.8, 15, -27.4, 4.2, 15, 1);
   wall(0, 0.48, 24.85, 14, 0.48, 0.22);
 
   // Wet asphalt with real-time reflections, puddles and rain ripples
@@ -263,38 +271,70 @@ export function buildLevel(scene, world, wet) {
     const ledge = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.4, d + 0.3), pbr('concrete_wall_008', (w + d) / 4, 0.3));
     ledge.position.set((x0 + x1) / 2, h + 0.2, (z0 + z1) / 2); scene.add(ledge);
   };
+  const block = (x0, x1, z0, z1, h, faces, opts = {}) => {
+    const w = x1 - x0, d = z1 - z0;
+    const mats = [roofMat, roofMat, roofMat, roofMat, roofMat, roofMat];
+    const idx = { '+x': 0, '-x': 1, '+z': 4, '-z': 5 };
+    for (const f of faces) mats[idx[f]] = brick(f[1] === 'x' ? d : w, h);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats);
+    m.position.set((x0 + x1) / 2, h / 2, (z0 + z1) / 2); m.receiveShadow = true; scene.add(m);
+    if (opts.collide !== false) wall((x0 + x1) / 2, h / 2, (z0 + z1) / 2, w / 2, h / 2, d / 2);
+    for (const f of faces) {
+      const alongZ = f[1] === 'x', fw = alongZ ? d : w, pos = f[0] === '+';
+      const fx = alongZ ? (pos ? x1 + 0.02 : x0 - 0.02) : 0, fz = !alongZ ? (pos ? z1 + 0.02 : z0 - 0.02) : 0;
+      const ry = f === '+x' ? Math.PI / 2 : f === '-x' ? -Math.PI / 2 : f === '+z' ? 0 : Math.PI;
+      const cols = Math.floor(fw / 2.6), floors = Math.floor((h - 4.2) / 3.4);
+      for (let fl = 0; fl < floors; fl++) for (let c = 0; c < cols; c++) {
+        const u = (c + 0.5) / cols * fw - fw / 2, y = 5.2 + fl * 3.4;
+        const p = alongZ ? new THREE.Vector3(fx, y, (z0 + z1) / 2 + u) : new THREE.Vector3((x0 + x1) / 2 + u, y, fz);
+        const lit = rnd() < (opts.lit ?? 0.34);
+        (lit ? winsLit : winsDark).push({ p, ry, col: lit ? new THREE.Color().setHSL(0.08 + rnd() * 0.06, 0.6, 0.35 + rnd() * 0.3).multiplyScalar(rnd() < 0.15 ? 0.6 : 1.4) : null });
+      }
+      if (opts.noStore && opts.noStore.includes(f)) continue;
+      const sw = Math.min(fw - 2, opts.storeW || 7);
+      if (sw < 2) continue;
+      const off = (opts.storeOff && opts.storeOff[f]) || (rnd() - 0.5) * 2;
+      const sf = new THREE.Mesh(new THREE.PlaneGeometry(sw, 2.6), new THREE.MeshStandardMaterial({ color: 0x050505, emissive: new THREE.Color().setHSL(0.06 + rnd() * 0.08, 0.35, 0.6), emissiveMap: storeTexture(), emissiveIntensity: 0.7, roughness: 0.1, metalness: 0.5 }));
+      sf.position.set(alongZ ? fx : (x0 + x1) / 2 + off, 1.7, alongZ ? (z0 + z1) / 2 + off : fz); sf.rotation.y = ry; scene.add(sf);
+      const awn = new THREE.Mesh(new THREE.BoxGeometry(sw + 0.4, 0.08, 1.0), new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(rnd(), 0.4, 0.18), roughness: 0.8 }));
+      awn.position.copy(sf.position); awn.position.y = 3.25; awn.rotation.y = ry; awn.translateZ(0.5); scene.add(awn);
+    }
+    const ledge = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.4, d + 0.3), pbr('concrete_wall_008', (w + d) / 4, 0.3));
+    ledge.position.set((x0 + x1) / 2, h + 0.2, (z0 + z1) / 2); scene.add(ledge);
+    for (let k = 0; k < Math.min(4, Math.floor(w * d / 120) + 1); k++) {
+      const sz = 0.8 + rnd() * 1.6;
+      const bx = new THREE.Mesh(new THREE.BoxGeometry(sz, sz * 0.7, sz * 1.2), new THREE.MeshStandardMaterial({ color: 0x4a4d52, roughness: 0.5, metalness: 0.6 }));
+      bx.position.set(x0 + 1.5 + rnd() * Math.max(0.1, w - 3), h + sz * 0.35, z0 + 1.5 + rnd() * Math.max(0.1, d - 3)); scene.add(bx);
+    }
+  };
   seed = 4242;
   [[-27, -17.5, 15], [-15.5, -3.5, 11], [-1.5, 11, 17], [13, 25, 10]].forEach(([z0, z1, h]) => bldg(-28, -12.7, z0, z1, h, 'x'));
   [[-27, -13, 13], [-11, 1, 18], [3, 14, 12], [16, 25, 9]].forEach(([z0, z1, h]) => bldg(12.7, 28, z0, z1, h, 'x'));
-  bldg(-28, 28, -42, -26.6, 22, 'z');
-  const inst = (geo, mat, list, color) => {
-    const im = new THREE.InstancedMesh(geo, mat, list.length); const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
-    list.forEach((w, i) => { Q.setFromEuler(new THREE.Euler(0, w.ry, 0)); M.compose(w.p, Q, new THREE.Vector3(1, 1, 1)); im.setMatrixAt(i, M); if (color && w.col) im.setColorAt(i, w.col); });
-    scene.add(im); return im;
-  };
-  const all = [...winsDark, ...winsLit];
-  inst(frameGeo, frameMat, all.map(w => ({ ...w, p: w.p.clone() })));
-  inst(winGeo, glassDark, winsDark.map(w => ({ ...w, p: w.p.clone().add(new THREE.Vector3(Math.sin(w.ry) * 0.05, 0, Math.cos(w.ry) * 0.05)) })));
-  // lit windows: warm interiors (instance colour drives emissive via a tiny shader tweak)
-  glassLit.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n#ifdef USE_INSTANCING_COLOR\n totalEmissiveRadiance *= vColor;\n#endif'); };
-  inst(winGeo, glassLit, winsLit.map(w => ({ ...w, p: w.p.clone().add(new THREE.Vector3(Math.sin(w.ry) * 0.05, 0, Math.cos(w.ry) * 0.05)) })), true);
-
   // Neon
   const sign = (text, color, vertical, x, y, z, rotY, w, h, sub) => {
     const t = signTexture(text, color, vertical, sub);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1.45, 1.45, 1.45), toneMapped: false, side: THREE.DoubleSide }));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1.45, 1.45, 1.45), toneMapped: false, side: vertical ? THREE.DoubleSide : THREE.FrontSide }));
     m.position.set(x, y, z); m.rotation.y = rotY; scene.add(m);
+    let back = null;
+    if (!vertical) { back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, h + 0.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x0c0d10, metalness: 0.5, roughness: 0.5 })); back.position.set(x, y, z); back.rotation.y = rotY; back.translateZ(-0.07); scene.add(back); }
+    return [m, back];
     if (vertical) { const back = new THREE.Mesh(new THREE.BoxGeometry(0.12, h + 0.2, w + 0.2), new THREE.MeshStandardMaterial({ color: 0x111, metalness: 0.6, roughness: 0.4 })); back.position.set(x, y, z); back.rotation.y = rotY - Math.PI / 2; scene.add(back); }
   };
   sign('RAMEN', '#ff2a8a', true, -12.2, 7.5, -9, Math.PI / 2, 1.3, 5.2);
   sign('HOTEL', '#19e3ff', true, 12.2, 8, -20, -Math.PI / 2, 1.3, 5.2);
   sign('BAR', '#ffb03a', true, 12.2, 5.5, 8.5, -Math.PI / 2, 1.1, 3.2);
   sign('WASH', '#7dffb0', true, -12.2, 5.2, 18, Math.PI / 2, 1.1, 3.6);
-  sign('PIER 9 MARKET', '#ffb060', false, 0, 10.5, -26.5, 0, 14, 2.6, 'OPEN LATE · FISH · NOODLES');
-  sign('OUTLIERS ARE NOT A CRIME', '#ff2a8a', false, -6, 5.2, -26.5, 0, 7.5, 1.0);
-  sign('THE CENSUS COUNTS', '#e8f0ff', false, 6.6, 5.4, -26.5, 0, 7.5, 1.3, '|||| EVERY ONE OF US');
-  const pinkL = new THREE.PointLight(0xff2a8a, 22, 15, 1.7); pinkL.position.set(-10.8, 5, -9); scene.add(pinkL);
-  const cyanL = new THREE.PointLight(0x19e3ff, 22, 15, 1.7); cyanL.position.set(10.8, 6, -20); scene.add(cyanL);
+  const arch = sign('PIER 9 MARKET', '#ffb060', false, 0, 10.5, -26.5, 0, 14, 2.6, 'OPEN LATE · FISH · NOODLES');
+  sign('OUTLIERS ARE NOT A CRIME', '#ff2a8a', false, -16.5, 5.2, -26.5, 0, 7.5, 1.0);
+  sign('THE CENSUS COUNTS', '#e8f0ff', false, 17, 5.4, -26.5, 0, 7.5, 1.3, '|||| EVERY ONE OF US');
+  { const beam = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.5, metalness: 0.7 })); beam.position.set(0, 10.5, -26.85); scene.add(beam); arch.push(beam); }
+  // the arch over the market entrance fades out while the camera passes under it
+  for (const m of arch) if (m) { m.material.transparent = true; m.userData.baseOpacity = 1; }
+  L.archFade = (center) => {
+    const target = center.z < -23.5 ? 0 : 1;
+    for (const m of arch) if (m) { const o = m.material.opacity + (target - m.material.opacity) * 0.12; m.material.opacity = o; m.visible = o > 0.02; }
+  };
+  addSpot(-10.8, 5, -9, 0xff2a8a, 22, 15, 1.7); addSpot(10.8, 6, -20, 0x19e3ff, 22, 15, 1.7);
 
   // Victorian lamp posts (photoscanned) with warm sodium-ish pools and a hint of volumetric haze
   const lampSrc = A.gltf.street_lamp.scene;
@@ -308,7 +348,7 @@ export function buildLevel(scene, world, wet) {
   const lampSpots = [[-9.4, -17], [9.4, -5], [-9.4, 7], [9.4, 18], [-9.4, -26 + 4], [9.4, -24]];
   for (const [lx, lz] of lampSpots) {
     const lamp = lampSrc.clone(); lamp.position.set(lx, 0, lz); lamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(lamp);
-    const pl = new THREE.PointLight(0xffb066, 32, 16, 1.5); pl.position.set(lx, 3.45, lz); scene.add(pl); L.lights.push(pl);
+    addSpot(lx, 3.45, lz, 0xffb066, 32, 16, 1.5);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(2.2, 1.6, 0.9), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     halo.position.set(lx, 3.55, lz); halo.scale.setScalar(1.6); scene.add(halo);
     const cone = new THREE.Mesh(new THREE.ConeGeometry(2.4, 3.4, 24, 1, true), coneMat); cone.position.set(lx, 3.45 - 1.7, lz); scene.add(cone);
@@ -322,6 +362,21 @@ export function buildLevel(scene, world, wet) {
     g.position.set(hx, 0, hz); g.rotation.y = hx < 0 ? Math.PI / 2 : -Math.PI / 2; scene.add(g);
     const b = new CANNON.Body({ mass: 0, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL }); b.addShape(new CANNON.Cylinder(0.18, 0.18, 0.8, 8)); b.position.set(hx, 0.4, hz); world.addBody(b);
   }
+
+  // ---- the rest of Chapter 1: Pier 9 Market, Gut Lane, Pier 9 docks ----
+  buildPier9({ scene, world, wet, block, sign, addSpot, groundMat, L, haloTex, coneMat, lampSrc });
+  const inst = (geo, mat, list, color) => {
+    const im = new THREE.InstancedMesh(geo, mat, list.length); const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
+    list.forEach((w, i) => { Q.setFromEuler(new THREE.Euler(0, w.ry, 0)); M.compose(w.p, Q, new THREE.Vector3(1, 1, 1)); im.setMatrixAt(i, M); if (color && w.col) im.setColorAt(i, w.col); });
+    scene.add(im); return im;
+  };
+  const all = [...winsDark, ...winsLit];
+  inst(frameGeo, frameMat, all.map(w => ({ ...w, p: w.p.clone() })));
+  inst(winGeo, glassDark, winsDark.map(w => ({ ...w, p: w.p.clone().add(new THREE.Vector3(Math.sin(w.ry) * 0.05, 0, Math.cos(w.ry) * 0.05)) })));
+  // lit windows: warm interiors (instance colour drives emissive via a tiny shader tweak)
+  glassLit.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n#ifdef USE_INSTANCING_COLOR\n totalEmissiveRadiance *= vColor;\n#endif'); };
+  inst(winGeo, glassLit, winsLit.map(w => ({ ...w, p: w.p.clone().add(new THREE.Vector3(Math.sin(w.ry) * 0.05, 0, Math.cos(w.ry) * 0.05)) })), true);
+
 
   // Pier edge + harbour
   const conc = pbr('concrete_wall_008', 10, 0.5);
@@ -364,11 +419,272 @@ export function buildLevel(scene, world, wet) {
     fragmentShader: 'varying float vA; varying float vU; void main(){ float e = 1.0 - abs(vU - 0.5) * 2.0; gl_FragColor = vec4(vec3(0.55, 0.62, 0.78) * vA * e, 1.0); }',
   });
   const rain = new THREE.Mesh(rg, rainMat); rain.frustumCulled = false; rain.renderOrder = 15; scene.add(rain); wet.hide.push(rain);
+  const _sd = [];
   L.update = (dt, center) => {
     moon.position.set(center.x - 8, 22, center.z + 10); moon.target.position.set(center.x, 0, center.z);
+    // light pool: the 8 spots nearest the view get the real lights
+    _sd.length = 0;
+    for (const sp of spots) { const dx = sp.p.x - center.x, dz = sp.p.z - (center.z - 2); _sd.push([dx * dx + dz * dz, sp]); }
+    _sd.sort((u, v) => u[0] - v[0]);
+    for (let i = 0; i < POOL.length; i++) {
+      const l = POOL[i], e = _sd[i];
+      if (!e || e[0] > 34 * 34) { l.intensity = 0; continue; }
+      const sp = e[1];
+      let k = sp.k;
+      if (sp.flick) k *= Math.random() < 0.06 ? 0.15 : (0.9 + Math.sin(G.rt * 31 + sp.p.x) * 0.1);
+      l.position.copy(sp.p); l.color.copy(sp.c); l.distance = sp.d; l.decay = sp.decay;
+      l.intensity = sp.i * k * Math.min(1, (34 * 34 - e[0]) / 200);
+    }
+    for (const g of L.gates) g.update(dt);
+    if (L.archFade) L.archFade(center);
+    if (L.updateExtra) L.updateExtra(dt, center);
     rainMat.uniforms.uTime.value += dt; rainMat.uniforms.uCenter.value.copy(center);
     wet.uniforms.uTime.value += dt;
     if (G.fx && Math.random() < 0.9) for (let k = 0; k < 3; k++) G.fx.add.emit(center.x + rand(-9, 9), 0.04, center.z + rand(-12, 8), 0, rand(0.5, 1.1), 0, 0.45, 0.5, 0.62, 0.22, 0.06, 0.015, 5, 0, 0.6);
   };
   return L;
+}
+
+// =====================================================================================
+// Chapter 1 beyond Harrow Street: Pier 9 Market (z -26.6..-64.4), Gut Lane (z -64.4..-92.4)
+// and the Pier 9 docks (z -92.4..-130.6) with open water on the west and north edges.
+// =====================================================================================
+export const ZONES = [
+  { id: 'harrow', name: 'HARROW STREET', x0: -12.4, x1: 12.4, z0: -26.9, z1: 24.4, cam: [-7.5, 7.5], start: [0, 12] },
+  { id: 'market', name: 'PIER 9 MARKET', x0: -7.1, x1: 7.1, z0: -64.0, z1: -26.9, cam: [-2.2, 2.2], start: [0, -30.5] },
+  { id: 'alley', name: 'GUT LANE', x0: -4.15, x1: 4.15, z0: -92.0, z1: -64.0, cam: [0, 0], start: [0, -67.5] },
+  { id: 'docks', name: 'PIER 9', x0: -20.3, x1: 14.2, z0: -130.3, z1: -92.0, cam: [-11, 7.5], start: [0, -95.5], openW: true, openN: true },
+];
+export function zoneAt(z) { for (let i = 0; i < ZONES.length; i++) if (z <= ZONES[i].z1 + 0.5 && z >= ZONES[i].z0 - 0.5) return i; return -1; }
+
+export function containerTexture(base, label) {
+  const [c, x] = canvas(512, 256);
+  x.fillStyle = base; x.fillRect(0, 0, 512, 256);
+  for (let i = 0; i < 512; i += 16) { const g = x.createLinearGradient(i, 0, i + 16, 0); g.addColorStop(0, 'rgba(0,0,0,0.28)'); g.addColorStop(0.5, 'rgba(255,255,255,0.10)'); g.addColorStop(1, 'rgba(0,0,0,0.28)'); x.fillStyle = g; x.fillRect(i, 0, 16, 256); }
+  x.fillStyle = 'rgba(0,0,0,0.35)'; x.fillRect(0, 0, 512, 10); x.fillRect(0, 246, 512, 10);
+  for (let k = 0; k < 40; k++) { x.fillStyle = `rgba(90,45,20,${0.08 + Math.random() * 0.18})`; x.beginPath(); x.ellipse(Math.random() * 512, Math.random() * 256, 4 + Math.random() * 30, 2 + Math.random() * 9, 0, 0, 6.28); x.fill(); }
+  x.font = '900 46px Inter, Arial, sans-serif'; x.fillStyle = 'rgba(235,235,235,0.75)'; x.textAlign = 'center'; x.fillText(label, 256, 120);
+  x.font = '700 18px Inter, Arial, sans-serif'; x.fillText('CSFU 409117 · 22G1', 256, 150);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+function gateTextTexture() {
+  const [c, x] = canvas(1024, 128);
+  x.clearRect(0, 0, 1024, 128);
+  x.font = '800 44px Inter, Arial, sans-serif'; x.textBaseline = 'middle'; x.fillStyle = '#fff';
+  x.fillText('CENSUS CHECKPOINT  ·  PRESENT YOUR TALLY  ·  ', 8, 64);
+  const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; return t;
+}
+function decalTexture(draw, w = 512, h = 256) { const [c, x] = canvas(w, h); x.clearRect(0, 0, w, h); draw(x, w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+function softRectTexture() {
+  const [c, x] = canvas(64, 64);
+  const g = x.createRadialGradient(32, 32, 2, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.5, 'rgba(255,255,255,0.45)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+}
+
+// A Census checkpoint: amber hologram wall with scrolling text that blocks the way until the zone is clear.
+function makeGate(scene, world, groundMat, x0, x1, z) {
+  const w = x1 - x0, H = 3.4, cx = (x0 + x1) / 2;
+  const tex = gateTextTexture();
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false,
+    uniforms: { uT: { value: 0 }, uOpen: { value: 0 }, tText: { value: tex }, uRep: { value: w / 9 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: `uniform float uT; uniform float uOpen; uniform sampler2D tText; uniform float uRep; varying vec2 vUv;
+      float hh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      void main(){
+        vec2 uv = vUv;
+        float row = floor(uv.y * 14.0);
+        uv.x += (step(0.93, hh(vec2(row, floor(uT * 9.0)))) - 0.0) * 0.03;
+        float scan = 0.55 + 0.45 * sin(uv.y * 140.0 - uT * 7.0);
+        float grid = max(step(0.95, fract(uv.x * uRep * 6.0)), step(0.92, fract(uv.y * 7.0))) * 0.45;
+        float txt = texture2D(tText, vec2(fract(uv.x * uRep - uT * 0.06), (uv.y - 0.42) * 5.0 + 0.5)).a * step(0.32, uv.y) * step(uv.y, 0.52);
+        float edge = smoothstep(0.0, 0.03, uv.y) * smoothstep(1.0, 0.85, uv.y);
+        float rim = step(uv.y, 0.025) * 2.0 + step(0.975, uv.x) + step(uv.x, 0.025);
+        float alive = step(uOpen * 1.02, hh(floor(vUv * vec2(uRep * 10.0, 9.0))));
+        vec3 col = vec3(1.0, 0.5, 0.12) * ((0.12 * scan + grid) * edge + txt * 1.3 + rim * 0.6);
+        gl_FragColor = vec4(col * alive, 1.0);
+      }`,
+  });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, H), mat); m.position.set(cx, H / 2, z); m.renderOrder = 26; scene.add(m);
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.5, metalness: 0.7, emissive: 0xff7a20, emissiveIntensity: 0 });
+  const posts = [];
+  for (const px of [x0, x1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.28, H + 0.3, 0.28), postMat); p.position.set(px, (H + 0.3) / 2, z); p.castShadow = true; scene.add(p); posts.push(p); }
+  const body = new CANNON.Body({ mass: 0, material: groundMat, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL });
+  body.addShape(new CANNON.Box(new CANNON.Vec3(w / 2, 2.5, 0.3))); body.position.set(cx, 2.5, z); world.addBody(body);
+  const g = {
+    x0, x1, z, cx, open: false, k: 0, inWorld: true,
+    openNow() { if (this.open) return; this.open = true; if (this.inWorld) { world.removeBody(body); this.inWorld = false; } },
+    snapOpen() { this.openNow(); this.k = 1; mat.uniforms.uOpen.value = 1; m.visible = false; },
+    close() { this.open = false; this.k = 0; mat.uniforms.uOpen.value = 0; m.visible = true; if (!this.inWorld) { world.addBody(body); this.inWorld = true; } },
+    update(dt) {
+      mat.uniforms.uT.value = G.rt;
+      if (this.open && this.k < 1) { this.k = Math.min(1, this.k + dt * 1.6); mat.uniforms.uOpen.value = this.k; if (this.k >= 1) m.visible = false; }
+      postMat.emissiveIntensity = this.open ? 0 : 0.6 + Math.sin(G.rt * 5) * 0.2;
+    },
+  };
+  return g;
+}
+
+function buildPier9(C) {
+  const { scene, world, wet, block, sign, addSpot, groundMat, L, haloTex, coneMat, lampSrc } = C;
+  const metal = new THREE.MeshStandardMaterial({ color: 0x24272c, roughness: 0.5, metalness: 0.75 });
+  const rusty = new THREE.MeshStandardMaterial({ color: 0x2b2421, roughness: 0.8, metalness: 0.5 });
+  const stat = (x, y, z, hx, hy, hz, ry = 0, mask = ALL) => {
+    const b = new CANNON.Body({ mass: 0, material: groundMat, collisionFilterGroup: GRP.STATIC, collisionFilterMask: mask });
+    b.addShape(new CANNON.Box(new CANNON.Vec3(hx, hy, hz))); b.position.set(x, y, z); if (ry) b.quaternion.setFromEuler(0, ry, 0);
+    world.addBody(b); return b;
+  };
+  const statCyl = (x, y, z, r, h) => { const b = new CANNON.Body({ mass: 0, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL }); b.addShape(new CANNON.Cylinder(r, r, h, 8)); b.position.set(x, y, z); world.addBody(b); };
+  const mesh = (geo, mat, x, y, z, ry = 0, shadow = true) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.y = ry; if (shadow) { m.castShadow = true; m.receiveShadow = true; } scene.add(m); return m; };
+  const floor = (prefix, x0, x1, z0, z1, tile, reflect, puddles, extra = {}) => {
+    const w = x1 - x0, d = z1 - z0;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), pbr(prefix, w / tile, d / tile, extra));
+    wet.patch(m.material, { reflect, puddles, area: [x0, z0, 30, 60] });
+    m.rotation.x = -Math.PI / 2; m.position.set((x0 + x1) / 2, 0.001, (z0 + z1) / 2); m.receiveShadow = true; scene.add(m); wet.hide.push(m); return m;
+  };
+  const decal = (tex, w, h, x, y, z, ry, opacity = 0.9) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, transparent: true, opacity, roughness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })); m.position.set(x, y, z); m.rotation.y = ry; scene.add(m); return m; };
+  const glowMat = (r, g, b) => new THREE.MeshBasicMaterial({ color: new THREE.Color(r, g, b), toneMapped: false });
+  seed = 9191;
+
+  // ---------------- PIER 9 MARKET: a covered night market lane ----------------
+  floor('pavement_03', -7.6, 7.6, -64.4, -26.6, 2.2, 0.55, 0.35);
+  block(-28, -7.6, -46, -26.6, 21, ['+z', '+x'], { storeOff: { '+z': -2 } });
+  block(-28, -7.6, -64.4, -46, 15, ['+x'], { noStore: ['+x'] });
+  block(7.6, 28, -42, -26.6, 19, ['+z', '-x'], { storeOff: { '+z': 2 } });
+  block(7.6, 28, -64.4, -42, 13, ['-x'], { noStore: ['-x'] });
+  const counterMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.85 });
+  const canvasCols = [0x5a1a1d, 0x184549, 0x6b4e17, 0x24335a, 0x452445, 0x284425];
+  const crateGeo = new THREE.BoxGeometry(0.55, 0.2, 0.4), iceMat = new THREE.MeshStandardMaterial({ color: 0xcfd8e0, roughness: 0.3 });
+  const boxMats = [new THREE.MeshStandardMaterial({ color: 0x1f5f9a, roughness: 0.5 }), new THREE.MeshStandardMaterial({ color: 0xb84a1e, roughness: 0.5 })];
+  const lanternMat = glowMat(2.4, 0.55, 0.25);
+  let ci = 0;
+  for (const side of [-1, 1]) for (let i = 0; i < 6; i++) {
+    if ((side < 0 && i === 3) || (side > 0 && i === 1)) continue;   // gaps = side doors
+    const z = -31.6 - i * 5.5 + (side > 0 ? 1.6 : 0), x = side * 6.0;
+    mesh(new THREE.BoxGeometry(1.3, 0.95, 2.6), counterMat, x, 0.475, z); stat(x, 0.5, z, 0.65, 0.5, 1.3);
+    const canv = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.05, 3.1), new THREE.MeshStandardMaterial({ color: canvasCols[ci++ % canvasCols.length], roughness: 0.9, side: THREE.DoubleSide }));
+    canv.position.set(x - side * 0.35, 2.55, z); canv.rotation.z = side * 0.16; canv.castShadow = true; scene.add(canv);
+    for (const dz of [-1.45, 1.45]) mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.5, 6), metal, x - side * 1.35, 1.25, z + dz, 0, false);
+    for (let k = 0; k < 3; k++) { const cz = z - 0.8 + k * 0.8; mesh(crateGeo, boxMats[(i + k) % 2], x, 1.05, cz, 0, false); mesh(new THREE.BoxGeometry(0.48, 0.05, 0.34), iceMat, x, 1.16, cz, 0, false); }
+    mesh(new THREE.SphereGeometry(0.17, 12, 8), lanternMat, x - side * 1.4, 2.2, z + 1.2, 0, false);
+    mesh(new THREE.SphereGeometry(0.17, 12, 8), lanternMat, x - side * 1.4, 2.2, z - 1.2, 0, false);
+  }
+  // festoon lights strung across the lane
+  const bulbs = [];
+  for (let k = 0; k < 6; k++) {
+    const z = -29.5 - k * 6.4, pts = [];
+    for (let i = 0; i <= 12; i++) { const t = i / 12; const p = new THREE.Vector3(-7.5 + 15 * t, 6.3 - Math.sin(t * Math.PI) * 1.2, z + t * 2.2); pts.push(p); if (i > 0 && i < 12) bulbs.push(p); }
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x0b0b0b })); scene.add(line);
+    if (k % 2 === 0) addSpot(0, 5.2, z + 1.1, 0xffbe70, 20, 13, 1.6);
+  }
+  const bulbIM = new THREE.InstancedMesh(new THREE.SphereGeometry(0.075, 8, 6), glowMat(2.6, 1.7, 0.85), bulbs.length);
+  bulbs.forEach((p, i) => bulbIM.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z))); scene.add(bulbIM);
+  sign('NOODLES', '#ff2a8a', true, -7.64, 6.2, -37, Math.PI / 2, 1.2, 4.6); addSpot(-6.6, 5.5, -37, 0xff2a8a, 16, 11, 1.7);
+  sign('FISH', '#19e3ff', true, 7.64, 5.6, -55, -Math.PI / 2, 1.1, 3.4); addSpot(6.6, 5, -55, 0x19e3ff, 16, 11, 1.7);
+  sign('PAWN', '#ffb03a', true, -7.64, 5.4, -58, Math.PI / 2, 1.1, 3.6);
+  sign('ENUMERATION 99.9997%', '#e8f0ff', false, 7.64, 9.6, -47, -Math.PI / 2, 10, 1.9, 'THANK YOU FOR BEING COUNTED');
+  sign('EVERYONE COUNTS', '#e8f0ff', false, -7.64, 10.5, -52, Math.PI / 2, 7, 1.3);
+  L.gates.push(makeGate(scene, world, groundMat, -7.6, 7.6, -26.9));
+
+  // ---------------- GUT LANE: a narrow wet service alley ----------------
+  floor('asphalt_02', -4.6, 4.6, -92.4, -64.4, 3.2, 1, 1, { normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: 1.9 });
+  block(-28, -4.6, -92.4, -64.4, 18, ['+x', '+z', '-z'], { noStore: ['+x', '+z'], storeW: 6, lit: 0.22 });
+  block(4.6, 28, -92.4, -64.4, 16, ['-x', '+z', '-z'], { noStore: ['-x', '+z'], storeW: 5, lit: 0.22 });
+  L.gates.push(makeGate(scene, world, groundMat, -4.6, 4.6, -64.4));
+  const dumpMat = new THREE.MeshStandardMaterial({ color: 0x1f3a2a, roughness: 0.6, metalness: 0.5 });
+  for (const [x, z, ry] of [[-3.55, -70.5, 0], [3.5, -82.5, 0], [-3.5, -88.6, 0]]) {
+    mesh(new THREE.BoxGeometry(1.0, 1.25, 2.0), dumpMat, x, 0.625, z, ry);
+    const lid = mesh(new THREE.BoxGeometry(1.05, 0.06, 2.05), dumpMat, x + Math.sign(x) * 0.2, 1.35, z, ry); lid.rotation.z = Math.sign(x) * 0.35;
+    stat(x, 0.65, z, 0.5, 0.65, 1.0, ry);
+  }
+  // fire escapes
+  const fe = (wx, dir, z0, z1) => {
+    const x = wx + dir * 0.55, len = z1 - z0, zc = (z0 + z1) / 2;
+    for (const y of [4.4, 7.8, 11.2]) {
+      mesh(new THREE.BoxGeometry(1.1, 0.06, len), metal, x, y, zc, 0, true);
+      mesh(new THREE.BoxGeometry(0.05, 0.05, len), metal, x + dir * 0.52, y + 1.0, zc, 0, false);
+      for (let k = 0; k <= 6; k++) mesh(new THREE.BoxGeometry(0.035, 1.0, 0.035), metal, x + dir * 0.52, y + 0.5, z0 + (len * k) / 6, 0, false);
+      const st = mesh(new THREE.BoxGeometry(0.7, 0.05, 4.4), metal, x, y - 1.7, zc - len * 0.18, 0, false); st.rotation.x = 0.66;
+    }
+  };
+  fe(-4.6, 1, -79, -73); fe(4.6, -1, -87, -81);
+  for (const [x, z] of [[-4.5, -67.5], [4.5, -74], [-4.5, -84], [4.5, -90]]) mesh(new THREE.CylinderGeometry(0.09, 0.09, 14, 8), rusty, x, 7, z, 0, false);
+  for (const [x, z, flick] of [[-4.45, -69, 0], [4.45, -78, 1], [-4.45, -87, 0]]) {
+    mesh(new THREE.BoxGeometry(0.2, 0.25, 0.5), metal, x, 3.6, z, 0, false);
+    mesh(new THREE.BoxGeometry(0.02, 0.16, 0.4), glowMat(1.8, 1.9, 2.2), x + Math.sign(-x) * 0.11, 3.5, z, 0, false);
+    addSpot(x - Math.sign(x) * 0.6, 3.3, z, 0xbcd0ff, 14, 10, 1.7, flick);
+  }
+  L.vents.push([-3.8, -76.2], [3.9, -69.3], [0.6, -90.1]);
+  const grateTex = decalTexture((x, w, h) => { x.fillStyle = '#26282c'; x.fillRect(0, 0, w, h); x.fillStyle = '#060607'; for (let i = 8; i < w - 8; i += 14) x.fillRect(i, 8, 7, h - 16); x.strokeStyle = '#3a3d42'; x.lineWidth = 6; x.strokeRect(3, 3, w - 6, h - 6); }, 128, 128);
+  const grateMat = new THREE.MeshStandardMaterial({ map: grateTex, roughness: 0.45, metalness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 });
+  for (const [x, z] of L.vents) { const g = mesh(new THREE.PlaneGeometry(0.9, 0.9), grateMat, x, 0.006, z, 0, false); g.rotation.x = -Math.PI / 2; }
+  // her mark, and a way to Moth's
+  decal(decalTexture((x, w, h) => { x.strokeStyle = '#9b6bff'; x.lineWidth = 16; x.shadowColor = '#9b6bff'; x.shadowBlur = 12; x.beginPath(); x.arc(w / 2, h / 2, 80, 0, 6.28); x.stroke(); x.beginPath(); x.moveTo(w / 2 - 110, h / 2 + 110); x.lineTo(w / 2 + 110, h / 2 - 110); x.stroke(); }, 512, 256), 3.2, 1.6, -4.58, 2.4, -76, Math.PI / 2, 0.85);
+  decal(decalTexture((x, w, h) => { x.font = '900 72px Inter, Arial'; x.fillStyle = '#e9e4da'; x.textAlign = 'center'; x.globalAlpha = 0.85; x.fillText('COUNT ME OUT', w / 2, h / 2 + 24); }, 512, 128), 3.4, 0.85, 4.58, 2.1, -71, -Math.PI / 2, 0.8);
+  decal(decalTexture((x, w, h) => { x.font = '800 60px Inter, Arial'; x.fillStyle = '#ffb060'; x.textAlign = 'center'; x.fillText('INK  ▾  PIER 9', w / 2, h / 2 + 20); }, 512, 128), 2.6, 0.65, 4.58, 1.8, -88.5, -Math.PI / 2, 0.85);
+  L.gates.push(makeGate(scene, world, groundMat, -4.6, 4.6, -92.4));
+
+  // ---------------- PIER 9: the docks ----------------
+  floor('asphalt_02', -20.6, 14.6, -130.6, -92.4, 3.6, 1, 1, { normalScale: new THREE.Vector2(1.1, 1.1), envMapIntensity: 1.7 });
+  block(15.0, 40, -132, -92.4, 12, ['-x'], { storeW: 9, lit: 0.18 });
+  const conc = pbr('concrete_wall_008', 12, 0.6);
+  mesh(new THREE.BoxGeometry(0.6, 1.8, 38.8), conc, -20.9, -0.9, -111.5, 0, false);
+  mesh(new THREE.BoxGeometry(35.8, 1.8, 0.6), conc, -3.0, -0.9, -130.9, 0, false);
+  const lip = new THREE.MeshStandardMaterial({ color: 0x8a8578, roughness: 0.8 });
+  mesh(new THREE.BoxGeometry(0.35, 0.16, 38.2), lip, -20.42, 0.08, -111.5, 0, false);
+  mesh(new THREE.BoxGeometry(35.2, 0.16, 0.35), lip, -3.2, 0.08, -130.42, 0, false);
+  const yellow = new THREE.MeshStandardMaterial({ color: 0xc8a232, roughness: 0.6 });
+  mesh(new THREE.BoxGeometry(0.16, 0.01, 37.6), yellow, -19.6, 0.005, -111.5, 0, false);
+  mesh(new THREE.BoxGeometry(34.4, 0.01, 0.16), yellow, -3.4, 0.005, -129.6, 0, false);
+  // the hero can't step off the edge (everyone else can go overboard)
+  stat(-21.0, 2, -111.5, 0.4, 2, 19.4, 0, GRP.HERO); stat(-3.0, 2, -131.0, 17.8, 2, 0.4, 0, GRP.HERO);
+  for (let z = -96; z >= -128; z -= 6.4) { mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.55, 10), metal, -19.95, 0.27, z, 0); statCyl(-19.95, 0.27, z, 0.22, 0.55); }
+  for (let x = -14; x <= 10; x += 6) { mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.55, 10), metal, x, 0.27, -129.95, 0); statCyl(x, 0.27, -129.95, 0.22, 0.55); }
+  // shipping containers (static stacks; two loose ones are liftable props)
+  const contMats = [['#7a2a1c', 'CANTOR SOUND'], ['#1f4a73', 'TALLYFREIGHT'], ['#2f5a3a', 'CANTOR SOUND'], ['#8a6d2a', 'HALDEN MED']].map(([c, l]) => new THREE.MeshStandardMaterial({ map: containerTexture(c, l), roughness: 0.6, metalness: 0.45 }));
+  const contGeo = new THREE.BoxGeometry(6.06, 2.59, 2.44);
+  const cont = (x, z, ry, n, mi) => { for (let k = 0; k < n; k++) { mesh(contGeo, contMats[(mi + k) % contMats.length], x, 1.295 + k * 2.59, z, ry + (k ? 0.03 : 0)); } stat(x, 1.295 * n, z, 3.03, 1.295 * n, 1.22, ry); };
+  cont(11.3, -99.5, Math.PI / 2, 2, 0); cont(11.3, -106.6, Math.PI / 2, 1, 1); cont(-15.8, -96.4, 0, 2, 2); cont(8.6, -124.2, 0.05, 1, 3); cont(-15.6, -99.0, 0, 1, 1);
+  // gantry crane on the west edge, legs on the dock and in the water
+  const craneMat = new THREE.MeshStandardMaterial({ color: 0x8f6f18, roughness: 0.55, metalness: 0.6 });
+  for (const [x, z] of [[-19.2, -104], [-19.2, -120], [-30, -104], [-30, -120]]) { mesh(new THREE.BoxGeometry(0.7, 15, 0.7), craneMat, x, 7.5 - (x < -25 ? 1.1 : 0), z, 0); if (x > -25) stat(x, 7.5, z, 0.35, 7.5, 0.35); }
+  for (const z of [-104, -120]) mesh(new THREE.BoxGeometry(11.5, 0.9, 0.9), craneMat, -24.6, 15, z);
+  mesh(new THREE.BoxGeometry(1.2, 1.2, 17.5), craneMat, -24.6, 15.6, -112); mesh(new THREE.BoxGeometry(1.0, 0.8, 26), craneMat, -24.6, 16.4, -112 - 0, Math.PI / 2);
+  mesh(new THREE.BoxGeometry(2.4, 2.0, 2.4), metal, -21.5, 14.4, -112);
+  const redLights = [];
+  for (const [x, y, z] of [[-12.0, 16.9, -112], [-37.2, 16.9, -112], [-24.6, 16.2, -103.6]]) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(3, 0.2, 0.15), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); s.position.set(x, y, z); s.scale.setScalar(0.9); scene.add(s); redLights.push(s); }
+  // sodium mast lights
+  for (const [x, z] of [[-8, -101], [5, -113.5], [-12, -124.5]]) {
+    mesh(new THREE.CylinderGeometry(0.12, 0.16, 9, 8), metal, x, 4.5, z, 0); statCyl(x, 2, z, 0.2, 4);
+    mesh(new THREE.BoxGeometry(0.9, 0.25, 0.5), metal, x, 9.05, z, 0, false);
+    mesh(new THREE.BoxGeometry(0.8, 0.04, 0.42), glowMat(3, 1.7, 0.6), x, 8.9, z, 0, false);
+    addSpot(x, 8.6, z, 0xffa648, 46, 22, 1.4);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(2.4, 1.4, 0.6), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); halo.position.set(x, 8.85, z); halo.scale.setScalar(2.2); scene.add(halo);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(4.2, 8.6, 24, 1, true), coneMat); cone.position.set(x, 8.8 - 4.3, z); scene.add(cone);
+  }
+  // Moth's: a stairwell kiosk at the end of the pier, warm light leaking from below
+  const kx = 11.6, kz = -127.2;
+  block(kx - 1.6, kx + 1.6, kz - 1.6, kz + 1.6, 3.0, ['-x'], { noStore: ['-x'], lit: 0 });
+  mesh(new THREE.PlaneGeometry(1.3, 2.3), glowMat(1.9, 1.05, 0.45), kx - 1.62, 1.15, kz, -Math.PI / 2, false);
+  sign('MOTH · INK', '#ffb060', false, kx - 1.66, 2.75, kz, -Math.PI / 2, 2.6, 0.5);
+  addSpot(kx - 2.6, 1.6, kz, 0xffa050, 18, 8, 1.6);
+  L.mothDoor = new THREE.Vector3(kx - 2.4, 0, kz);
+  // lights under the harbour: windows of something below the water
+  const winTex = softRectTexture();
+  const uw = [];
+  for (const [bx, bz, cols, rows] of [[-36, -140, 6, 3], [-12, -146, 5, 3], [10, -142, 4, 2], [-44, -112, 3, 6], [-38, -96, 2, 4]]) {
+    for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) if (Math.random() < 0.6) uw.push([bx + c * 2.6 + (bz > -130 ? 0 : 0), bz - r * 3.2, Math.random()]);
+  }
+  const uwMat = new THREE.MeshBasicMaterial({ map: winTex, color: new THREE.Color(0.35, 0.6, 0.75), transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false });
+  const uwIM = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.5, 2.2).rotateX(-Math.PI / 2), uwMat, uw.length);
+  uw.forEach(([x, z], i) => uwIM.setMatrixAt(i, new THREE.Matrix4().makeTranslation(x, -1.06, z))); uwIM.renderOrder = 3; scene.add(uwIM);
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(260, 200), new THREE.MeshStandardMaterial({ color: 0x020509, roughness: 0.06, metalness: 0.85, envMapIntensity: 2.2 }));
+  sea.rotation.x = -Math.PI / 2; sea.position.set(-50, -1.1, -170); scene.add(sea); wet.hide.push(sea);
+
+  L.updateExtra = (dt, center) => {
+    if (G.fx) for (const [vx, vz] of L.vents) if (Math.abs(vz - center.z) < 22 && Math.random() < 0.55) G.fx.smoke.emit(vx + rand(-0.3, 0.3), 0.1, vz + rand(-0.3, 0.3), rand(-0.15, 0.15), rand(0.8, 1.6), rand(-0.15, 0.15), 0.32, 0.33, 0.37, rand(1.2, 2.2), 0.18, 0.9, -0.15, 0.5, 0.55);
+    const blink = (G.rt % 1.6) < 0.5 ? 1 : 0.05;
+    for (const s of redLights) s.material.opacity = blink;
+    uwMat.opacity = 0.26 + Math.sin(G.rt * 0.7) * 0.06 + Math.sin(G.rt * 2.3) * 0.03;
+  };
 }

@@ -17,6 +17,9 @@ import { spawnEnemy, removeEnemy, updateEnemyVisual, setRagdoll, setEnemyGlow, E
 import { initInput, moveVector, input } from './input.js';
 import { loadAssets, A } from './assets.js';
 import { Powers, Shock, Front } from './powers.js';
+import { ZONES, zoneAt } from './level.js';
+import { CHAPTER } from './chapter1.js';
+import { P as PROG, SKILLS, MAX_RANK, xpToNext, load as loadProgress, save as saveProgress, addXP, buy as buySkill, rank, stat, resetAll } from './progress.js';
 
 // ======================= renderer / scene =======================
 const canvas = document.getElementById('c');
@@ -173,8 +176,10 @@ async function boot() {
   world.addContactMaterial(new CANNON.ContactMaterial(G.charMat, G.propMat, { friction: 0.02, restitution: 0.05 }));
   hero = createHero();
   G.hero = hero;
+  loadProgress(); applyStats(false); hero.hp = hero.maxHp; hero.focus = hero.maxFocus;
+  { const st = ZONES[PROG.checkpoint || 0].start; hero.body.position.set(st[0], 0.85, st[1]); }
   resetProps();
-  btn.disabled = false; btn.textContent = 'OVERCLOCK';
+  btn.disabled = false; titleButtons();
   requestAnimationFrame(frame);
 }
 
@@ -232,6 +237,7 @@ const ui = {
   top: $('top'), btns: $('btns'), hp: $('hpfill'), focus: $('focusfill'), focusbar: $('focusbar'), wave: $('wavelabel'), left: $('enemyleft'),
   combo: $('combo'), comboNum: $('combonum'), comboName: $('comboname'), surge: $('surgebtn'), ult: $('ultbtn'), ultRing: $('ultring'),
   hint: $('hint'), banner: $('banner'), hurt: $('hurt'), flash: $('flash'), ultveil: $('ultveil'), fps: $('fps'),
+  dlg: $('dlg'), dlgWho: $('dlgwho'), dlgLine: $('dlgline'), xp: $('xpfill'), arm: $('armbtn'),
 };
 let flashA = 0, hurtA = 0, bannerT = 0, hintText = '';
 function banner(text, sub, dur = 2) { ui.banner.innerHTML = text + (sub ? `<small>${sub}</small>` : ''); ui.banner.classList.add('show'); bannerT = dur; }
@@ -311,7 +317,7 @@ function registerHit(e, o, impact, cp) {
   if (o.kind === 'enemy') {
     dmg = impact * 2.3;
     if (!o.dead) damageEnemy(o, Math.round(dmg * 0.6), null, 0, 'collide');
-  } else dmg = impact * (0.5 + Math.sqrt(o.mass) * 0.3);
+  } else dmg = impact * (0.5 + Math.sqrt(o.mass) * 0.3) * stat.throwDmg();
   if (o.held) dmg *= 0.8;
   if (e.type === 'auditor') {
     if (o.kind === 'prop' && o.mass < 25) dmg *= 0.35;
@@ -336,7 +342,7 @@ function registerHit(e, o, impact, cp) {
 function damageEnemy(e, dmg, dir, force, src) {
   if (e.dead || !e.alive) return;
   e.hp -= dmg; e.hpShow = 2.5; e.flinch = 0.22;
-  if (!G.ultState && G.t > (G.ultLock || 0) && src !== 'ult' && src !== 'tick') G.ult = Math.min(100, G.ult + dmg * 0.24);
+  if (!G.ultState && G.t > (G.ultLock || 0) && src !== 'ult' && src !== 'tick') G.ult = Math.min(100, G.ult + dmg * 0.24 * stat.ultGain());
   if (src !== 'slam' && src !== 'tick' && src !== 'collide') {
     G.combo++; G.comboT = 2.6; G.stats.hits++;
     G.stats.maxCombo = Math.max(G.stats.maxCombo, G.combo);
@@ -366,7 +372,9 @@ function knockdown(e, dir, force) {
 
 function kill(e, dir, force) {
   e.dead = true; e.hp = 0;
-  G.stats.kills++; if (!G.ultState && G.t > (G.ultLock || 0)) G.ult = Math.min(100, G.ult + 5);
+  G.stats.kills++; if (!G.ultState && G.t > (G.ultLock || 0)) G.ult = Math.min(100, G.ult + 5 * stat.ultGain());
+  gainXP(e.type === 'auditor' ? 220 : e.type === 'lobber' ? 26 : 22, e.body.position);
+  if (e.type === 'auditor') G.pending.push(() => sayList(CHAPTER.auditorDown));
   sfx.down();
   const p = e.body.position;
   FX.psi(_v2.set(p.x, p.y + 0.5, p.z), 22, 5, 0.25, 0.8);
@@ -410,8 +418,8 @@ function grabbables() {
   return out;
 }
 
-function liftCost(o) { return o.kind === 'enemy' ? 12 : o.kind === 'grenade' ? 2 : 3 + o.mass * 0.025; }
-function holdDrain(o) { return o.kind === 'enemy' ? 9 : o.kind === 'grenade' ? 1 : 2.5 + o.mass * 0.032; }
+function liftCost(o) { return (o.kind === 'enemy' ? 12 : o.kind === 'grenade' ? 2 : 3 + o.mass * 0.025) * stat.liftCost(); }
+function holdDrain(o) { return (o.kind === 'enemy' ? 9 : o.kind === 'grenade' ? 1 : 2.5 + o.mass * 0.032) * stat.liftCost(); }
 
 const api = {
   audio() { initAudio(); },
@@ -423,7 +431,7 @@ const api = {
     for (const o of grabbables()) {
       const p = o.body.position;
       const wd = Math.hypot(p.x - hp.x, p.z - hp.z);
-      if (wd > TUNE.GRAB_RANGE) continue;
+      if (wd > TUNE.GRAB_RANGE * stat.reach()) continue;
       toScreen(p, _sp); if (_sp.z > 1) continue;
       const pr = o.radius * pxPerMeter(p);
       const d = Math.hypot(_sp.x - x, _sp.y - y);
@@ -469,7 +477,7 @@ function startHold(id, o, x, y) {
     cancelAttack(o); setRagdoll(o, true); o.state = 'gripped';
     num(_v2.set(b.position.x, b.position.y + 1.3, b.position.z), 'GRIPPED', 'psi', 0.8);
   } else if (o.kind === 'grenade') {
-    o.byHero = true; G.stats.catches++; G.ult = Math.min(100, G.ult + 5);
+    o.byHero = true; G.stats.catches++; G.ult = Math.min(100, G.ult + 5 * stat.ultGain()); gainXP(6);
     num(_v2.set(b.position.x, b.position.y + 0.8, b.position.z), 'CAUGHT!', 'psi', 1);
   }
   b.velocity.y += 2.5;
@@ -528,7 +536,7 @@ function throwObj(o, x, y, vx, vy, sp) {
   dir.normalize();
   const power = clamp((sp - TUNE.FLICK_MIN) / 2000, 0, 1);
   const massF = o.kind === 'enemy' ? 0.85 : clamp(1.15 - o.mass / 420, 0.48, 1.12);
-  const v = lerp(18, 37, power) * massF;
+  const v = lerp(18, 37, power) * massF * stat.throwSpeed();
   const target = aimAssist(b.position, dir, o);
   const d3 = new THREE.Vector3();
   let antiG = 0.55;
@@ -643,15 +651,20 @@ function updateThrown(dt) {
       o.inWater = true;
       FX.splash(b.position); sfx.splash();
       if (o.kind === 'enemy') {
-        if (!o.dead) { o.dead = true; G.stats.kills++; G.ult = Math.min(100, G.ult + 12); num(_v2.set(b.position.x, 1.5, b.position.z), 'OVERBOARD!', 'psi', 1.2); }
+        if (!o.dead) { o.dead = true; G.stats.kills++; G.ult = Math.min(100, G.ult + 12 * stat.ultGain()); num(_v2.set(b.position.x, 1.5, b.position.z), 'OVERBOARD!', 'psi', 1.2); gainXP(o.type === 'auditor' ? 220 : 30, b.position); }
       }
     }
     // tunnelled into a building: put it back on the street
-    if (b.position.y > -0.5 && (Math.abs(b.position.x) > 13.3 || b.position.z < -27.2)) {
-      b.position.x = clamp(b.position.x, -12.1, 12.1); b.position.z = Math.max(b.position.z, -25.9); b.position.y = Math.max(b.position.y, 1.5);
-      b.velocity.scale(-0.25, b.velocity);
+    if (b.position.y > -0.5) {
+      const zi = zoneAt(b.position.z);
+      if (zi >= 0) {
+        const Z = ZONES[zi]; let fix = false;
+        if (b.position.x < Z.x0 - 1.0 && !Z.openW) { b.position.x = Z.x0 + 0.3; fix = true; }
+        if (b.position.x > Z.x1 + 1.0) { b.position.x = Z.x1 - 0.3; fix = true; }
+        if (fix) { b.position.y = Math.max(b.position.y, 1.5); b.velocity.scale(-0.25, b.velocity); }
+      }
     }
-    if (b.position.y < -4 || Math.abs(b.position.x) > 30 || b.position.z < -40 || b.position.z > 50) {
+    if (b.position.y < -4 || Math.abs(b.position.x) > 70 || b.position.z < -175 || b.position.z > 60) {
       if (o.kind === 'prop') removeProp(o);
       else if (o.kind === 'enemy') { if (!o.dead) { o.dead = true; G.stats.kills++; } removeEnemy(o); }
       else if (o.kind === 'grenade') removeGrenade(o);
@@ -701,6 +714,7 @@ function explodeBarrel(o) {
 const BOLT_DMG = 8;
 function damageProp(o, dmg, at, src) {
   if (!o.alive || o.dying || o.type === 'chunk' && src === 'impact') return;
+  if (o.held) dmg *= stat.shield();
   o.hp -= dmg; o.dmgShow = 2.2;
   applyDamageLook(o);
   if (at) FX.sparks(at, 5 + Math.min(10, dmg | 0), 4.5, o.def.wood ? [0.85, 0.6, 0.35] : o.def.soft ? [0.6, 0.6, 0.6] : [1, 0.78, 0.45], 0.09);
@@ -784,7 +798,8 @@ function explodeGrenade(g) {
   const p = new THREE.Vector3(g.body.position.x, g.body.position.y, g.body.position.z);
   const byHero = g.byHero;
   removeGrenade(g);
-  explosion(p, 3.8, byHero ? 85 : 60, 24, byHero);
+  const bl = byHero ? stat.blast() : 1;
+  explosion(p, 3.8 * Math.sqrt(bl), (byHero ? 85 : 60) * bl, 24, byHero);
 }
 function updateGrenades(dt) {
   for (const g of [...G.grenades]) {
@@ -1067,7 +1082,7 @@ function doSurge() {
   const hp = heroCenter();
   if (G.surgeCD > 0) return;
   if (hero.focus < 20) { num(_v2.set(hp.x, hp.y + 1.6, hp.z), 'NO FOCUS', 'psi', 0.8); return; }
-  hero.focus -= 20; hero.focusDelay = 0.6; G.surgeCD = 3.2;
+  hero.focus -= 20; hero.focusDelay = 0.6; G.surgeCD = stat.surgeCD();
   // a beat of anticipation: light and data drain inward to her chest
   G.surge = { t: 0, fired: false };
   G.slowT = 0.14; G.slowScale = 0.45;
@@ -1077,7 +1092,7 @@ function doSurge() {
   sfx.surgeCharge();
   hero.surgePose = 0;
 }
-const SURGE_R = 7.2, SURGE_SCAN = 0.6;
+let SURGE_R = 7.2; const SURGE_SCAN = 0.6;
 function updateSurge(rdt) {
   const S = G.surge; if (!S) return;
   S.t += rdt;
@@ -1108,6 +1123,7 @@ function surgeRelease(S) {
   Powers.halos.spawn(chest, 0.4, 1.8, 0.2, new THREE.Color(1.8, 1.6, 2.6), 0.5);
   Shock.fire(chest, 0.5, 0.5, 0.03);
   FX.flash(hp, 0xa58cff, 25);
+  SURGE_R = 7.2 * stat.surgeR();
   const R = SURGE_R;
   Powers.grids.spawn(hp, R, SURGE_SCAN, 1.5, new THREE.Color(0.85, 0.5, 2.3), 0.45);
   Powers.walls.spawn(hp, R * 1.02, 1.7, SURGE_SCAN * 1.25, new THREE.Color(0.5, 0.28, 1.45));
@@ -1132,8 +1148,8 @@ function surgeRelease(S) {
       voxelPuff(ep.x, ep.y + 0.2, ep.z, 18, 5, 5, 0.12, 0.7);
       Powers.halos.spawn(_v2.set(ep.x, ep.y + 0.3, ep.z), 0.4, 2.2, 0.3, new THREE.Color(1.4, 1.0, 2.6), 0.7);
       setEnemyGlow(e, 0.9); glitchEnemy(e, 0.5);
-      if (e.type === 'auditor') { damageEnemy(e, 22, dir, 0, 'surge'); e.body.velocity.x += dir.x * 4; e.body.velocity.z += dir.z * 4; e.body.velocity.y += 3; return; }
-      damageEnemy(e, Math.round(14 + 14 * f), dir, 0, 'surge');
+      if (e.type === 'auditor') { damageEnemy(e, Math.round(22 * stat.surgeDmg()), dir, 0, 'surge'); e.body.velocity.x += dir.x * 4; e.body.velocity.z += dir.z * 4; e.body.velocity.y += 3; return; }
+      damageEnemy(e, Math.round((14 + 14 * f) * stat.surgeDmg()), dir, 0, 'surge');
       if (e.dead || e.state !== 'ragdoll') { setRagdoll(e, true); e.state = 'ragdoll'; e.downT = 0; cancelAttack(e); }
       e.body.velocity.set(dir.x * (9 + 5 * f), 5 + 4 * f, dir.z * (9 + 5 * f));
       e.body.angularVelocity.set(dir.z * 7 + rand(-3, 3), rand(-4, 4), -dir.x * 7 + rand(-3, 3));
@@ -1280,12 +1296,12 @@ function updateUlt(rdt, dt) {
         const dx = b.position.x - hp.x, dz = b.position.z - hp.z; const d = Math.hypot(dx, dz) || 1;
         const rx = dx / d, rz = dz / d;
         voxelPuff(b.position.x, b.position.y, b.position.z, o.kind === 'enemy' ? 12 : 5, 4, 4, 0.12, 0.6);
-        if (V && V.heavy) { damageEnemy(o, 90, new THREE.Vector3(rx, 0, rz), 0, 'ult'); glitchEnemy(o, 0.6); o.stun = 1.5; if (!o.dead) { o.state = 'stunned'; o.stateT = 0; } restoreGroup(o); continue; }
+        if (V && V.heavy) { damageEnemy(o, Math.round(90 * stat.ultDmg()), new THREE.Vector3(rx, 0, rz), 0, 'ult'); glitchEnemy(o, 0.6); o.stun = 1.5; if (!o.dead) { o.state = 'stunned'; o.stateT = 0; } restoreGroup(o); continue; }
         const v = rand(26, 34) * (o.kind === 'enemy' ? 0.8 : clamp(1.2 - o.mass / 500, 0.55, 1.1));
         b.velocity.set(rx * v - rz * 4, rand(2, 5), rz * v + rx * 4);
         b.angularVelocity.set(rand(-8, 8), rand(-8, 8), rand(-8, 8));
         o.thrown = true; o.thrownT = 0; o.antiGrav = 0.45; o.dropped = false;
-        if (o.kind === 'enemy') { o.state = 'ragdoll'; o.downT = 0; o.thrown = true; glitchEnemy(o, 0.5); if (!o.dead) damageEnemy(o, 42, new THREE.Vector3(rx, 0, rz), 0, 'ult'); }
+        if (o.kind === 'enemy') { o.state = 'ragdoll'; o.downT = 0; o.thrown = true; glitchEnemy(o, 0.5); if (!o.dead) damageEnemy(o, Math.round(42 * stat.ultDmg()), new THREE.Vector3(rx, 0, rz), 0, 'ult'); }
       }
     }
   } else if (U.phase === 'release') {
@@ -1293,16 +1309,8 @@ function updateUlt(rdt, dt) {
   }
 }
 
-// ======================= waves & flow =======================
-const WAVES = [
-  { name: 'WAVE 1', sub: 'THE CENSUS IS COUNTING', list: ['counter', 'counter', 'counter', 'counter'] },
-  { name: 'WAVE 2', sub: 'MARKSMEN — HOLD SOMETHING UP TO BLOCK', list: ['counter', 'marksman', 'counter', 'marksman', 'counter'] },
-  { name: 'WAVE 3', sub: 'LOBBERS — CATCH THE GRENADES', list: ['lobber', 'counter', 'counter', 'lobber', 'marksman'] },
-  { name: 'WAVE 4', sub: 'THEY BROUGHT FRIENDS', list: ['counter', 'marksman', 'counter', 'lobber', 'marksman', 'counter', 'counter'] },
-  { name: 'THE AUDITOR', sub: 'HEAVY. USE HEAVY THINGS. MAKE IT CHARGE INTO A CAR.', list: ['auditor', 'counter', 'lobber', 'counter', 'marksman'] },
-];
-const SPAWNS = [[-4, -23.5], [4, -23.5], [0, -21], [-11.6, -16.5], [11.6, -12], [-11.6, -2.5], [11.6, 2], [-11.6, 12], [11.6, 15], [-3, 21.5], [3, 21.5]];
-let spawnTimer = 0, breakT = 0;
+// ======================= chapter flow: zones, gates, checkpoints =======================
+let spawnTimer = 0, zoneBreak = 0;
 const colGeo = new THREE.CylinderGeometry(0.7, 0.7, 14, 20, 1, true);
 const columns = [];
 function spawnColumn(x, z) {
@@ -1317,23 +1325,72 @@ function updateColumns(dt) {
     if (c.t > 0.7) { scene.remove(c.m); columns.splice(i, 1); }
   }
 }
+const ZD = (i) => CHAPTER.zones[i];
 function pickSpawn(type) {
   const hp = heroCenter();
-  let opts = SPAWNS.filter(([x, z]) => Math.hypot(x - hp.x, z - hp.z) > (type === 'auditor' ? 12 : 9));
-  if (G.wave === 0) { const north = opts.filter(([x, z]) => z < -10); if (north.length) opts = north; }
-  const pool = opts.length ? opts : SPAWNS;
-  if (type === 'auditor') { // dramatic: from the market end
-    const s = pool.find(p => p[1] < -20) || pool[0]; return s;
-  }
+  const list = ZD(G.zone).spawns;
+  let opts = list.filter(([x, z]) => Math.hypot(x - hp.x, z - hp.z) > (type === 'auditor' ? 12 : 9));
+  const ahead = opts.filter(([, z]) => z < hp.z - 4);
+  if (ahead.length && (Math.random() < 0.7 || type === 'auditor')) opts = ahead;
+  const pool = opts.length ? opts : list;
+  if (type === 'auditor') return pool.reduce((a, b) => (b[1] < a[1] ? b : a));
   return pool[Math.floor(Math.random() * pool.length)];
 }
-function startWave(i) {
-  G.wave = i; G.waveQueue = [...WAVES[i].list]; spawnTimer = 0.4;
-  banner(WAVES[i].name, WAVES[i].sub, 2.4);
-  ui.wave.textContent = i === WAVES.length - 1 ? 'FINAL WAVE' : `WAVE ${i + 1}/${WAVES.length}`;
+function setObjective(text, pos) {
+  G.objective = text ? { text, pos: pos ? pos.clone() : null } : null;
+  beacon.visible = !!(pos && text);
+  if (pos && text) beacon.position.set(pos.x, 0, pos.z);
+}
+const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 12, 20, 1, true), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 0.55, 2.2), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
+beacon.geometry.translate(0, 6, 0); beacon.visible = false; scene.add(beacon);
+let beaconT = 0;
+function updateBeacon(dt) {
+  if (!beacon.visible) return;
+  beacon.material.opacity = 0.22 + Math.sin(G.rt * 3) * 0.08;
+  beaconT -= dt; if (beaconT <= 0) { beaconT = 0.9; FX.rings.spawn(beacon.position.x, 0.08, beacon.position.z, 0.3, 2.2, 0.8, 0x9b7bff, 0.9); }
+}
+function setGates(upTo) { level.gates.forEach((g, i) => { if (i < upTo) g.snapOpen(); else g.close(); }); }
+function openGate(i) {
+  const g = level.gates[i]; if (!g || g.open) return;
+  g.openNow(); sfx.gate();
+  for (let k = 0; k < 70; k++) { const x = rand(g.x0, g.x1); Powers.voxels.emit(x, rand(0.2, 3.2), g.z, rand(-1.5, 1.5), rand(0.5, 3), rand(-2.5, 2.5), rand(0.08, 0.18), rand(0.5, 1.0), 2.4, 1.1, 0.25, 7); }
+  G.glitch = Math.max(G.glitch, 0.4);
+}
+function enterZone(i) {
+  G.zone = i; G.zState = 'fight'; G.waveI = -1; G.reinforced = false;
+  PROG.checkpoint = i; saveProgress();
+  ui.wave.textContent = ZONES[i].name;
+  banner(ZONES[i].name, i === 0 ? `CHAPTER ${CHAPTER.num} · ${CHAPTER.title}` : '', 2.2);
+  setObjective(null);
+  DLG.q.length = 0;   // stale lines from the last area are dropped
+  sayList(ZD(i).enter);
+  zoneBreak = 2.0;
+}
+function startNextWave() {
+  const Z = ZD(G.zone);
+  if (G.waveI + 1 >= Z.waves.length) { zoneCleared(); return; }
+  G.waveI++;
+  const W = Z.waves[G.waveI];
+  G.waveQueue = [...W.list]; spawnTimer = 0.5;
+  if (G.waveI > 0 || G.zone > 0) banner(W.sub, '', 1.8); else banner(W.sub, '', 1.8);
+  if (W.say) sayList(W.say);
+}
+function zoneCleared() {
+  const i = G.zone; G.zState = 'clear';
+  banner('CLEAR', ZD(i).next, 1.8);
+  sayList(ZD(i).clear);
+  hero.hp = Math.min(hero.maxHp, hero.hp + 30);
+  gainXP(60);
+  if (i < level.gates.length) { openGate(i); G.unlocked = i + 1; setObjective(ZD(i).next, new THREE.Vector3(level.gates[i].cx, 0, level.gates[i].z - 1.5)); }
+  else setObjective(ZD(i).next, level.mothDoor);
 }
 function updateWaves(dt) {
-  if (G.mode === 'play') {
+  if (G.mode !== 'play') return;
+  const hp = heroCenter();
+  if (G.zState === 'fight') {
+    if (zoneBreak > 0) { zoneBreak -= dt; if (zoneBreak <= 0) startNextWave(); return; }
+    const W = ZD(G.zone).waves[G.waveI];
+    if (!W) return;
     if (G.waveQueue.length) {
       spawnTimer -= dt;
       if (spawnTimer <= 0) {
@@ -1343,32 +1400,104 @@ function updateWaves(dt) {
         spawnTimer = t === 'auditor' ? 1.6 : 0.65;
       }
     }
+    if (W.reinforce && !G.reinforced) {
+      const aud = G.enemies.find(e => e.type === 'auditor' && !e.dead);
+      if (aud && aud.hp < aud.maxHp * 0.55) { G.reinforced = true; G.waveQueue.push(...W.reinforce); sayList(CHAPTER.reinforce); }
+    }
     const alive = G.enemies.filter(e => !e.dead).length;
     ui.left.textContent = `${alive + G.waveQueue.length} CENSUS LEFT`;
-    if (!G.waveQueue.length && alive === 0 && G.enemies.length === 0) {
-      if (G.wave >= WAVES.length - 1) win();
-      else { G.mode = 'break'; breakT = 2.2; banner('CLEAR', 'COOLING DOWN', 1.6); hero.hp = Math.min(hero.maxHp, hero.hp + 25); resupply(); }
+    if (!G.waveQueue.length && alive === 0 && G.enemies.length === 0 && G.waveI >= 0) {
+      if (G.waveI < ZD(G.zone).waves.length - 1) { zoneBreak = 2.2; banner('CLEAR', 'COOLING DOWN', 1.4); hero.hp = Math.min(hero.maxHp, hero.hp + 15); resupply(); }
+      else zoneCleared();
     }
-  } else if (G.mode === 'break') {
-    breakT -= dt;
-    if (breakT <= 0) { G.mode = 'play'; startWave(G.wave + 1); }
+  } else if (G.zState === 'clear') {
+    ui.left.textContent = G.objective ? '▸ ' + G.objective.text : '';
+    const nx = G.zone + 1;
+    if (nx < ZONES.length && hp.z < ZONES[nx].z1 - 1.5) enterZone(nx);
+    else if (nx >= ZONES.length && level.mothDoor && Math.hypot(hp.x - level.mothDoor.x, hp.z - level.mothDoor.z) < 1.9) startEnding();
+  }
+}
+function resupply() {
+  const hp = heroCenter(); const Z = ZONES[G.zone];
+  const cnt = (t) => G.props.filter(o => o.type === t && zoneAt(o.body.position.z) === G.zone).length;
+  const want = [['barrel', 2 - cnt('barrel')], ['crate', 3 - cnt('crate')], ['trash', 4 - cnt('trash') - cnt('trashR')], ['bag', 2 - cnt('bag')]];
+  for (const [type, n] of want) for (let i = 0; i < n; i++) {
+    for (let tries = 0; tries < 12; tries++) {
+      const x = rand(Z.x0 + 1, Z.x1 - 1), z = clamp(hp.z + rand(-9, 5), Z.z0 + 1.5, Z.z1 - 1.5);
+      if (Math.hypot(x - hp.x, z - hp.z) < 3.5 || G.props.some(o => Math.hypot(o.body.position.x - x, o.body.position.z - z) < 1.4)) continue;
+      addProp(type, x, z, rand(0, 6), 1.8 + Math.random() * 0.5);
+      FX.rings.spawn(x, 0.06, z, 0.2, 1.6, 0.6, 0x9b7bff, 0.7); break;
+    }
   }
 }
 
-// harbor crews leave more junk on the street between waves
-function resupply() {
-  const hp = heroCenter();
-  const spots = [[-4.2, -17.4], [5.2, 4.2], [4.5, 18.6], [7.4, -20.5], [-6.5, 17.2], [6.2, -14.2], [-1.8, -3.2], [-8.6, -12], [8.4, 6.5]];
-  const cnt = (t) => G.props.filter(o => o.type === t).length;
-  const want = [['barrel', 3 - cnt('barrel')], ['crate', 3 - cnt('crate')], ['trash', 6 - cnt('trash') - cnt('trashR')], ['bag', 4 - cnt('bag')], ['drum', 2 - cnt('drum')]];
-  for (const [type, n] of want) for (let i = 0; i < n; i++) {
-    const free = spots.filter(([x, z]) => Math.hypot(x - hp.x, z - hp.z) > 4 && !G.props.some(o => Math.hypot(o.body.position.x - x, o.body.position.z - z) < 1.2));
-    if (!free.length) return;
-    const [x, z] = free[Math.floor(Math.random() * free.length)];
-    addProp(type, x + rand(-0.3, 0.3), z + rand(-0.3, 0.3), rand(0, 6), 1.8 + Math.random() * 0.5);
-    FX.rings.spawn(x, 0.06, z, 0.2, 1.6, 0.6, 0x9b7bff, 0.7);
+// ======================= XP =======================
+let lvlToastT = 0;
+function gainXP(n, at) {
+  const up = addXP(n);
+  if (at) num(_v2.set(at.x, at.y + 1.9, at.z), '+' + Math.round(n) + ' XP', 'xp', 0.7);
+  if (up) {
+    applyStats(true);
+    banner('LEVEL ' + PROG.level, 'NEW INK AVAILABLE · TAP THE ARM', 2.2); sfx.levelUp();
+    const hp = heroCenter(); Powers.halos.spawn(_v2.set(hp.x, hp.y + 0.6, hp.z), 0.5, 4, 0.5, new THREE.Color(1.2, 0.8, 2.6), 0.6);
+    lvlToastT = 6;
   }
 }
+function applyStats(refill) {
+  const mh = stat.maxHp(), mf = stat.maxFocus();
+  if (refill) { hero.hp += mh - hero.maxHp; hero.focus += mf - hero.maxFocus; }
+  hero.maxHp = mh; hero.maxFocus = mf;
+  hero.hp = Math.min(hero.hp, mh); hero.focus = Math.min(hero.focus, mf);
+}
+
+// ======================= dialogue =======================
+const DLG = { q: [], cur: null, t: 0, shown: 0 };
+const WHO = { null: 'NULL', rem: 'REM', radio: 'CENSUS RADIO', auditor: 'THE AUDITOR', moth: 'MOTH' };
+function sayList(lines) { if (lines) for (const [w, t] of lines) DLG.q.push({ w, t }); }
+function updateDialogue(rdt) {
+  const box = ui.dlg;
+  if (!DLG.cur) {
+    if (!DLG.q.length) { if (box.classList.contains('show')) box.classList.remove('show'); return; }
+    DLG.cur = DLG.q.shift(); DLG.t = 0; DLG.shown = -1;
+    box.className = 'show ' + DLG.cur.w; ui.dlgWho.textContent = WHO[DLG.cur.w] || DLG.cur.w.toUpperCase();
+    if (DLG.cur.w === 'radio') sfx.radio(); else if (DLG.cur.w === 'rem') sfx.rem();
+  }
+  DLG.t += rdt;
+  const n = Math.min(DLG.cur.t.length, Math.floor(DLG.t * 48));
+  if (n !== DLG.shown) { DLG.shown = n; ui.dlgLine.textContent = DLG.cur.t.slice(0, n); }
+  const hold = 1.4 + DLG.cur.t.length * 0.045;
+  if (DLG.t > DLG.cur.t.length / 48 + hold) { DLG.cur = null; if (!DLG.q.length) box.classList.remove('show'); }
+}
+function clearDialogue() { DLG.q.length = 0; DLG.cur = null; ui.dlg.classList.remove('show'); }
+
+// ======================= ending: below Pier 9 =======================
+function startEnding() {
+  G.mode = 'ending'; setObjective(null); clearDialogue();
+  for (const h of [...G.holds.values()]) { endHold(h); dropObj(h.obj); }
+  PROG.checkpoint = 0; PROG.done = true; saveProgress();
+  const run = G.runId;
+  $('fade').classList.add('on');
+  setTimeout(() => { if (G.runId !== run) return; showMoth(); }, 1300);
+}
+function showMoth() {
+  const el = $('moth'), box = $('mothlines');
+  el.classList.remove('hidden'); box.innerHTML = '';
+  $('mothtally').textContent = '';
+  let i = 0;
+  const lines = CHAPTER.ending;
+  const next = () => {
+    if (i >= lines.length) { el.onclick = null; setTimeout(() => { el.classList.add('hidden'); $('fade').classList.remove('on'); showEnd(true); }, 900); return; }
+    const [w, t] = lines[i++];
+    const d = document.createElement('div'); d.className = 'ml ' + w; d.innerHTML = `<b>${WHO[w]}</b><span>${t}</span>`; box.appendChild(d);
+    requestAnimationFrame(() => d.classList.add('in'));
+    if (/Forty-two/.test(t)) $('mothtally').textContent = tally(42);
+    sfx.ui();
+  };
+  next();
+  let timer = setInterval(() => { if (el.classList.contains('hidden')) { clearInterval(timer); return; } next(); if (i > lines.length) clearInterval(timer); }, 2600);
+  el.onclick = () => { next(); };
+}
+function tally(n) { let s = ''; for (let k = 0; k < n; k++) s += (k % 5 === 4) ? '̸ ' : '|'; return s; }
 
 function heroDown() {
   hero.dead = true; hero.hp = 0; G.mode = 'dead';
@@ -1376,17 +1505,16 @@ function heroDown() {
   for (const h of [...G.holds.values()]) { endHold(h); dropObj(h.obj); }
   const run = G.runId; setTimeout(() => { if (G.runId === run && G.mode === 'dead') showEnd(false); }, 1400);
 }
-function win() {
-  G.mode = 'win'; sfx.win();
-  banner('BLOCK CLEARED', 'THE CENSUS LOST COUNT', 3);
-  const run = G.runId; setTimeout(() => { if (G.runId === run && G.mode === 'win') showEnd(true); }, 1800);
-}
 function showEnd(won) {
-  $('endtitle').textContent = won ? 'BLOCK CLEARED' : 'SIGNAL LOST';
+  G.mode = won ? 'win' : G.mode;
+  if (won) sfx.win();
+  $('endtitle').textContent = won ? `CHAPTER ${CHAPTER.num} COMPLETE` : 'SIGNAL LOST';
   $('endquote').textContent = won ? '"Count me out."' : '"Not like this. Not again."';
+  $('endnext').textContent = won ? 'NEXT · CHAPTER 2: THE DEPOSITORY · IN DEVELOPMENT' : `RESTART AT ${ZONES[PROG.checkpoint].name}`;
+  $('againbtn').textContent = won ? 'REPLAY CHAPTER' : 'AGAIN';
   const s = G.stats; const m = Math.floor(s.time / 60), sec = Math.floor(s.time % 60);
   $('endstats').innerHTML = [
-    [s.kills, 'CENSUS DOWN'], [s.throws, 'THROWS'], [s.maxCombo, 'BEST COMBO'], [s.catches, 'GRENADES CAUGHT'], [s.blocks, 'SHOTS BLOCKED'], [`${m}:${String(sec).padStart(2, '0')}`, 'TIME'],
+    [s.kills, 'CENSUS DOWN'], [s.throws, 'THROWS'], [s.maxCombo, 'BEST COMBO'], [s.catches, 'GRENADES CAUGHT'], [s.blocks, 'SHOTS BLOCKED'], ['LV ' + PROG.level, 'LEVEL'],
   ].map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join('');
   $('end').classList.remove('hidden');
 }
@@ -1399,10 +1527,14 @@ function resetGame() {
   for (const b of Powers.brackets.list) { b.obj = null; b.out = 0; b.m.visible = false; }
   Powers.reticles.clear(); G.freeze = 0; G.glitch = 0; G.surge = null;
   resetProps();
+  applyStats(false);
   hero.hp = hero.maxHp; hero.focus = hero.maxFocus; hero.dead = false; hero.levitate = 0; hero.invuln = 0;
-  hero.body.position.set(0, 0.85, 12); hero.body.velocity.set(0, 0, 0);
+  const st = ZONES[PROG.checkpoint].start;
+  hero.body.position.set(st[0], 0.85, st[1]); hero.body.velocity.set(0, 0, 0);
   G.ult = 0; G.ultState = null; G.combo = 0; G.surgeCD = 0; G.trauma = 0;
-  G.stats = { throws: 0, hits: 0, kills: 0, maxCombo: 0, time: 0, blocks: 0, catches: 0 };
+  G.waveQueue = []; G.zState = 'none';
+  clearDialogue(); setObjective(null);
+  if (!G.stats || G.mode !== 'dead') G.stats = { throws: 0, hits: 0, kills: 0, maxCombo: 0, time: 0, blocks: 0, catches: 0 };
   camState.init = false;
 }
 
@@ -1429,7 +1561,10 @@ function updateCamera(rdt) {
     return;
   }
   const v = hero.body.velocity;
-  const tgt = _v1.set(clamp(hp.x + v.x * 0.18, -7.5, 7.5), 0, clamp(hp.z - 2.0 + v.z * 0.18, -21, 18));
+  const zi = Math.max(0, zoneAt(hp.z)), Z = ZONES[zi];
+  const U = ZONES[Math.min(G.unlocked || 0, ZONES.length - 1)];
+  const zMin = U.z0 + (U.openN ? 3.5 : 6);
+  const tgt = _v1.set(clamp(hp.x + v.x * 0.18, Z.cam[0], Z.cam[1]), 0, clamp(hp.z - 2.0 + v.z * 0.18, zMin, 18));
   if (!camState.init) { camState.look.copy(tgt); camState.dist = dist + 14; camState.init = true; }
   camState.look.lerp(tgt, damp(5, rdt));
   camState.dist += (dist - camState.dist) * damp(G.mode === 'intro' ? 2.2 : 4, rdt);
@@ -1471,6 +1606,10 @@ function updateShieldBars() {
 }
 function updateUI(rdt) {
   updateShieldBars();
+  updateDialogue(rdt); updateBeacon(rdt);
+  ui.xp.style.transform = `scaleX(${PROG.level >= 20 ? 1 : clamp(PROG.xp / xpToNext(PROG.level), 0, 1)})`;
+  const lvTxt = 'LV ' + PROG.level; if (ui.arm.textContent !== lvTxt) ui.arm.textContent = lvTxt;
+  ui.arm.classList.toggle('pts', PROG.points > 0);
   ui.hp.style.transform = `scaleX(${clamp(hero.hp / hero.maxHp, 0, 1)})`;
   ui.focus.style.transform = `scaleX(${clamp(hero.focus / hero.maxFocus, 0, 1)})`;
   ui.focusbar.classList.toggle('low', hero.focus < 20);
@@ -1522,8 +1661,8 @@ function updateHero(dt) {
   if (G.ultState) { b.position.y += ((0.85 + 0.0) - b.position.y) * 0.1; b.velocity.y = Math.max(b.velocity.y, 0); }
   hero.invuln = Math.max(0, hero.invuln - dt);
   hero.focusDelay -= dt;
-  if (hero.focusDelay <= 0 && !G.holds.size) hero.focus = Math.min(hero.maxFocus, hero.focus + TUNE.FOCUS_REGEN * dt);
-  if (G.t - hero.lastHurt > 4 && !hero.dead) hero.hp = Math.min(hero.maxHp, hero.hp + 2.5 * dt);
+  if (hero.focusDelay <= 0 && !G.holds.size) hero.focus = Math.min(hero.maxFocus, hero.focus + TUNE.FOCUS_REGEN * stat.focusRegen() * dt);
+  if (G.t - hero.lastHurt > 4 && !hero.dead) hero.hp = Math.min(hero.maxHp, hero.hp + 2.5 * stat.regen() * dt);
   G.surgeCD = Math.max(0, G.surgeCD - dt);
   if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 0; }
   if (G.mode === 'play') G.stats.time += dt;
@@ -1547,13 +1686,49 @@ $('mutebtn').addEventListener('click', (e) => { muted = !muted; setMasterMuted(m
 $('againbtn').addEventListener('click', () => { sfx.ui(); $('end').classList.add('hidden'); resetGame(); beginRun(); });
 $('startbtn').addEventListener('click', () => { initAudio(); sfx.ui(); $('title').classList.add('hidden'); beginRun(); });
 
+function titleButtons() {
+  const has = PROG.checkpoint > 0 || PROG.level > 1;
+  $('startbtn').textContent = PROG.checkpoint > 0 ? 'CONTINUE · ' + ZONES[PROG.checkpoint].name : 'OVERCLOCK';
+  $('newbtn').classList.toggle('hidden', !has);
+}
+let confirmNew = false, armWasPaused = false;
+$('newbtn').addEventListener('click', () => {
+  if (!confirmNew) { confirmNew = true; $('newbtn').textContent = 'TAP AGAIN TO WIPE SAVE'; return; }
+  resetAll(); confirmNew = false; $('newbtn').textContent = 'START OVER (WIPES SAVE)'; applyStats(false); titleButtons(); sfx.ui();
+});
+function openArm() {
+  armWasPaused = G.paused;
+  if (G.mode === 'play' || G.mode === 'intro') G.paused = true;
+  $('pause').classList.add('hidden');
+  renderArm(); $('arm').classList.remove('hidden'); sfx.ui();
+}
+function closeArm() {
+  $('arm').classList.add('hidden');
+  if (armWasPaused) $('pause').classList.remove('hidden'); else G.paused = false;
+  sfx.ui();
+}
+function renderArm() {
+  $('armpts').textContent = PROG.points > 0 ? `LEVEL ${PROG.level} · ${PROG.points} INK TO SPEND` : `LEVEL ${PROG.level} · ${Math.round(PROG.xp)} / ${xpToNext(PROG.level)} XP TO NEXT`;
+  $('armlist').innerHTML = SKILLS.map(sk => {
+    const r = rank(sk.id), marks = '|'.repeat(r) + '<i>' + '|'.repeat(MAX_RANK - r) + '</i>';
+    return `<div class="sk"><div class="t"><div class="n">${sk.ink}</div><div class="d">${sk.what}</div></div><div class="r">${marks}</div><button data-sk="${sk.id}" ${PROG.points > 0 && r < MAX_RANK ? '' : 'disabled'}>INK</button></div>`;
+  }).join('');
+  $('armtally').textContent = 'IRIS CALLOWAY. THAT’S YOU.  ' + tally(PROG.done ? 42 : 41);
+  for (const b of $('armlist').querySelectorAll('button')) b.addEventListener('click', () => { if (buySkill(b.dataset.sk)) { applyStats(true); sfx.ink(); renderArm(); } });
+}
+$('armbtn').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); initAudio(); openArm(); });
+$('armbtn2').addEventListener('click', () => openArm());
+$('armclose').addEventListener('click', () => closeArm());
+
 function beginRun() {
+  const from = PROG.checkpoint || 0;
   G.mode = 'intro'; camState.init = false;
   ui.top.style.display = 'flex'; ui.btns.style.display = 'flex';
-  G.wave = -1;
+  G.unlocked = from; setGates(from);
   const run = (G.runId = (G.runId || 0) + 1);
-  setTimeout(() => { if (G.runId !== run || G.mode !== 'intro') return; G.mode = 'play'; startWave(0); }, 1300);
-  FX.rings.spawn(0, 0.1, 12, 0.3, 4, 0.8, 0x9b7bff, 1);
+  setTimeout(() => { if (G.runId !== run || G.mode !== 'intro') return; G.mode = 'play'; enterZone(from); }, 1300);
+  const st = ZONES[from].start;
+  FX.rings.spawn(st[0], 0.1, st[1], 0.3, 4, 0.8, 0x9b7bff, 1);
   hero.levitate = 1;
 }
 
@@ -1660,7 +1835,12 @@ window.__G = G; // debug hook
 window.__dbg = {
   toScreen: (x, y, z) => { const o = {}; toScreen({ x, y, z }, o); return [o.x, o.y]; },
   spawn: (t, x, z) => { const e = spawnEnemy(t, x, z); attach(e); return G.enemies.length; },
-  wave: (i) => { for (const e of [...G.enemies]) removeEnemy(e); G.waveQueue = []; G.mode = 'play'; startWave(i); },
+  zone: (i) => { for (const e of [...G.enemies]) removeEnemy(e); G.waveQueue = []; G.mode = 'play'; G.unlocked = i; setGates(i); const st = ZONES[i].start; hero.body.position.set(st[0], 0.85, st[1]); camState.init = false; enterZone(i); },
+  clearZone: () => { for (const e of [...G.enemies]) removeEnemy(e); G.waveQueue = []; G.waveI = ZD(G.zone).waves.length - 1; zoneBreak = 0; },
+  xp: (n) => gainXP(n),
+  skipBreak: () => { if (zoneBreak > 0) zoneBreak = 0.01; spawnTimer = 0; },
+  arm: () => openArm(),
+  ending: () => startEnding(),
   surge: () => doSurge(), ult: () => { G.ult = 100; startUlt(); },
   grabEnemy: () => { const e = G.enemies.find(e => !e.dead && e.def.grip && e.state !== 'spawn'); if (!e) return false; startHold(77, e, G.W / 2, G.H / 2); return true; },
   release: (vx, vy) => { const h = G.holds.get(77); if (!h) return false; endHold(h); if (vx) throwObj(h.obj, G.W / 2, G.H / 2, vx, vy, Math.hypot(vx, vy)); else dropObj(h.obj); return true; },

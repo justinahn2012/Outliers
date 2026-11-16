@@ -34,7 +34,7 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
 #wavelabel { font-size:20px; letter-spacing:2px; line-height:1; }
 #enemyleft { font-family:Inter, sans-serif; font-size:10px; font-weight:800; letter-spacing:1.5px; color:var(--dim); margin-top:3px; }
 #pausebtn { pointer-events:auto; width:38px; height:38px; border-radius:50%; border:1px solid rgba(255,255,255,0.25); background:rgba(10,10,20,0.5); color:#fff; font-weight:900; font-size:13px; letter-spacing:1px; }
-#combo { position:absolute; right: calc(var(--sar) + 16px); top: calc(var(--sat) + 74px); text-align:right; opacity:0; transition: opacity .2s; }
+#combo { position:absolute; right: calc(var(--sar) + 16px); top: calc(var(--sat) + 172px); text-align:right; opacity:0; transition: opacity .2s; }
 #combo b { display:block; font-family:'Bebas Neue', Impact; font-size:46px; line-height:0.9; color:#fff; text-shadow: 0 0 18px rgba(155,123,255,1); }
 #combo span { font-family:'Bebas Neue', Impact; font-size:18px; letter-spacing:3px; color:var(--psi2); }
 #btns { position:absolute; right: calc(var(--sar) + 16px); bottom: calc(var(--sab) + 18px); display:flex; flex-direction:column; align-items:center; gap:14px; }
@@ -94,6 +94,56 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
   #end h1, #pause h1 { font-size: 46px; } .stats { grid-template-columns: repeat(3, 1fr); max-width:560px; } .stats b { font-size:24px; } #end .quote { margin: 2px 0 10px; }
   #hint { bottom: calc(var(--sab) + 70px); }
 }
+
+/* dialogue */
+#dlg { position:absolute; left:50%; top: calc(var(--sat) + 100px); transform: translate(-50%, -6px); width: min(90vw, 460px); padding: 9px 12px 10px; border-radius:10px;
+  background: rgba(8,8,18,0.72); border:1px solid rgba(255,255,255,0.1); border-left:3px solid var(--psi); opacity:0; transition: opacity .25s, transform .25s; text-align:left; }
+#dlg.show { opacity:1; transform: translate(-50%, 0); }
+#dlg b { display:block; font-family:'Bebas Neue', Impact; font-size:13px; letter-spacing:2.5px; color:var(--psi2); margin-bottom:2px; }
+#dlg span { font-size:13.5px; line-height:1.35; font-weight:600; color:#f1efff; }
+#dlg.rem { border-left-color:#ff5fd2; } #dlg.rem b { color:#ff9be6; } #dlg.rem span { font-family: ui-monospace, Menlo, monospace; font-size:12.5px; color:#ffd9f6; text-shadow: 1px 0 rgba(255,40,160,0.5), -1px 0 rgba(40,220,255,0.5); }
+#dlg.radio { border-left-color:#e8f0ff; } #dlg.radio b { color:#cfe0ff; } #dlg.radio b::before { content:'\25C9  '; color:#ff4d4d; } #dlg.radio span { color:#dfe7f5; font-style:italic; }
+#dlg.auditor { border-left-color:#ff6a3a; } #dlg.auditor b { color:#ffb08a; }
+#dlg.moth { border-left-color:#ffb060; } #dlg.moth b { color:#ffcf95; }
+/* xp + level */
+.xprow { display:flex; align-items:center; gap:7px; margin-top:6px; }
+#armbtn { pointer-events:auto; flex:0 0 auto; height:22px; padding:0 9px; border-radius:11px; border:1px solid rgba(200,185,255,0.55); background:rgba(30,20,70,0.6); color:#fff; font-family:'Bebas Neue', Impact; font-size:14px; letter-spacing:1.5px; }
+#armbtn.pts { background: linear-gradient(180deg, #a184ff, #5a35d6); box-shadow: 0 0 14px rgba(160,120,255,0.95); animation: pulse 1.1s infinite; }
+#armbtn.pts::after { content:' +'; }
+.bar.xp { flex:1; height:4px; margin-top:0; } .bar.xp i { background: linear-gradient(90deg, #8a6dff, #e3d8ff); }
+.num.xp { color:#c9b8ff; font-size:15px; letter-spacing:1px; }
+/* the arm: skill tree as tattoos */
+#arm { background: rgba(4,4,12,0.88); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+#arm h1 { font-family:'Bebas Neue', Impact; font-size: clamp(40px, 12vw, 64px); letter-spacing:4px; margin:0; color:#fff; text-shadow: 0 0 26px rgba(155,123,255,0.9); }
+#armpts { font-weight:800; letter-spacing:2px; font-size:12px; color:var(--psi2); margin: 2px 0 12px; }
+.armskin { width: min(94vw, 470px); border-radius: 28px 28px 120px 120px / 28px 28px 60px 60px; padding: 16px 14px 18px;
+  background: radial-gradient(ellipse at 30% 20%, #c9987a 0%, #b78466 45%, #9a6a50 100%); box-shadow: inset 0 0 40px rgba(60,25,10,0.55), 0 10px 40px rgba(0,0,0,0.6); text-align:left; }
+.sk { display:flex; align-items:center; gap:10px; padding: 8px 4px; border-bottom: 1px dashed rgba(30,20,30,0.25); }
+.sk:last-child { border-bottom:none; }
+.sk .t { flex:1; min-width:0; }
+.sk .n { font-family: 'Courier New', ui-monospace, monospace; font-weight:900; font-size:16px; letter-spacing:1px; color: rgba(22,18,34,0.9); text-shadow: 0 0 1.5px rgba(22,18,34,0.6); }
+.sk .d { font-size:11px; line-height:1.3; color: rgba(40,22,18,0.85); font-weight:600; margin-top:2px; }
+.sk .r { font-family:'Courier New', monospace; font-weight:900; font-size:18px; letter-spacing:3px; color: rgba(22,18,34,0.85); min-width:38px; text-align:center; }
+.sk .r i { color: rgba(22,18,34,0.18); font-style:normal; }
+.sk button { pointer-events:auto; flex:0 0 auto; height:34px; min-width:54px; border-radius:17px; border:none; background: rgba(22,18,34,0.85); color:#e9e2ff; font-family:'Bebas Neue', Impact; font-size:16px; letter-spacing:2px; }
+.sk button:disabled { opacity:0.25; }
+.armtally { margin-top:10px; font-family:'Courier New', monospace; font-size:13px; letter-spacing:1px; color: rgba(22,18,34,0.6); word-break:break-all; text-align:center; }
+/* ending */
+#fade { position:fixed; inset:0; background:#000; opacity:0; pointer-events:none; transition: opacity 1.2s; }
+#fade.on { opacity:1; }
+#moth { background: radial-gradient(ellipse at 50% 40%, #2a1608 0%, #120904 55%, #050302 100%); }
+.mothplace { font-family:'Bebas Neue', Impact; font-size:28px; letter-spacing:8px; color:#ffcf95; text-shadow:0 0 18px rgba(255,150,60,0.8); }
+#mothtally { min-height:22px; margin: 8px auto 16px; max-width: 340px; font-family:'Courier New', monospace; font-size:15px; letter-spacing:1px; color:#e8c9a0; word-break:break-all; }
+#mothlines { width: min(90vw, 440px); text-align:left; }
+.ml { opacity:0; transform: translateY(6px); transition: opacity .5s, transform .5s; margin-bottom:12px; }
+.ml.in { opacity:1; transform:none; }
+.ml b { display:block; font-family:'Bebas Neue', Impact; letter-spacing:2.5px; font-size:13px; color:#ffcf95; }
+.ml span { font-size:15px; line-height:1.4; color:#f5ead9; }
+.ml.null b { color:#c9b8ff; } .ml.rem b { color:#ff9be6; } .ml.rem span { font-family: ui-monospace, Menlo, monospace; font-size:13.5px; color:#ffd9f6; }
+.mothtap { margin-top:18px; font-size:10px; letter-spacing:3px; color:rgba(255,220,180,0.4); font-weight:800; }
+.next { margin: -6px 0 14px; font-size:11px; letter-spacing:2px; font-weight:800; color:var(--psi2); }
+#newbtn { font-size:11px; padding:7px 16px; margin-top:8px; }
+#newbtn.hidden { display:none; }
 #fps { position:absolute; left: calc(var(--sal) + 10px); bottom: calc(var(--sab) + 6px); font-size:10px; color:rgba(255,255,255,0.35); font-weight:700; }
 </style>
 </head>
@@ -108,6 +158,7 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
       <div class="nameplate">NULL <small>IRIS CALLOWAY</small></div>
       <div class="bar hp"><i id="hpfill"></i></div>
       <div class="bar focus" id="focusbar"><i id="focusfill"></i></div>
+      <div class="xprow"><button id="armbtn">LV 1</button><div class="bar xp"><i id="xpfill"></i></div></div>
     </div>
     <div id="waveinfo"><div id="wavelabel">WAVE 1</div><div id="enemyleft"></div></div>
     <button id="pausebtn" aria-label="Pause">II</button>
@@ -120,6 +171,7 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
   <div id="joy"><div id="knob"></div></div>
   <div id="hint"></div>
   <div id="banner"></div>
+  <div id="dlg"><b id="dlgwho"></b><span id="dlgline"></span></div>
   <div id="fps"></div>
 </div>
 
@@ -127,6 +179,7 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
   <div class="series">OUTLIERS</div>
   <div class="logo">OVERCLOCK</div>
   <div class="tag">THEY CAN&rsquo;T COUNT ZERO.</div>
+  <div class="next" style="margin:8px 0 0">CHAPTER 1 · UNCOUNTED</div>
   <div class="card"><b>Iris Calloway</b> was Subject Zero in a neural overclock trial that went dark. The Census wiped every record of her. Now she is <b>Null</b>: she sees the world as data, and she can edit it.<br><span style="color:#a9a3cf">Run too hot and her brain starts deleting memories. She keeps backups inked on her arms.</span></div>
   <div class="controls">
     <span>DRAG</span><span>Drag empty space to move</span>
@@ -136,21 +189,37 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
     <span>CATCH</span><span>Grab live grenades out of the air and send them back</span>
   </div>
   <button class="go" id="startbtn">OVERCLOCK</button>
+  <button class="ghost hidden" id="newbtn">START OVER (WIPES SAVE)</button>
   <div style="height:8px"></div>
 </div>
 
 <div id="pause" class="screen hidden">
   <h1>PAUSED</h1>
   <button class="go" id="resumebtn">RESUME</button>
-  <button class="ghost" id="restartbtn">RESTART</button>
+  <button class="ghost" id="armbtn2">THE ARM · SKILLS</button>
+  <button class="ghost" id="restartbtn">RESTART CHECKPOINT</button>
   <button class="ghost" id="mutebtn">SOUND: ON</button>
 </div>
 
 <div id="end" class="screen hidden">
   <h1 id="endtitle">BLOCK CLEARED</h1>
   <div class="quote" id="endquote">"Count me out."</div>
+  <div class="next" id="endnext"></div>
   <div class="stats" id="endstats"></div>
   <button class="go" id="againbtn">AGAIN</button>
+</div>
+<div id="arm" class="screen hidden">
+  <h1>THE ARM</h1>
+  <div id="armpts"></div>
+  <div class="armskin"><div id="armlist"></div><div class="armtally" id="armtally"></div></div>
+  <button class="go" id="armclose">BACK</button>
+</div>
+<div id="fade"></div>
+<div id="moth" class="screen hidden">
+  <div class="mothplace">BELOW PIER 9</div>
+  <div id="mothtally"></div>
+  <div id="mothlines"></div>
+  <div class="mothtap">TAP TO CONTINUE</div>
 </div>
 <script>/*BUNDLE*/</script>
 </body>

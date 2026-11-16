@@ -166,6 +166,28 @@ export const sfx = {
       noise(t + 0.03 + i * 0.028, 0.02, 'bandpass', f, f, 3, 0.25 * (1 - i / 15), 0.001);
     }
   },
+  gate() {
+    if (!ctx) return; const t = ctx.currentTime;
+    tone(t, 0.5, 'square', 1200, 90, 0.07, 0.002);
+    for (let i = 0; i < 8; i++) { const f = 600 + Math.random() * 4000; noise(t + i * 0.03, 0.025, 'bandpass', f, f, 3, 0.18, 0.001); }
+    tone(t, 0.6, 'sine', 120, 40, 0.5, 0.003);
+  },
+  radio() {
+    if (!ctx) return; const t = ctx.currentTime;
+    noise(t, 0.12, 'bandpass', 2400, 1800, 4, 0.12, 0.002); tone(t + 0.02, 0.05, 'square', 1500, 1500, 0.025, 0.001);
+  },
+  rem() {
+    if (!ctx) return; const t = ctx.currentTime;
+    tone(t, 0.09, 'sine', 1760, 880, 0.03, 0.002); tone(t + 0.05, 0.08, 'sine', 2637, 2637, 0.02, 0.002);
+  },
+  levelUp() {
+    if (!ctx) return; const t = ctx.currentTime;
+    [523, 659, 784, 1047].forEach((f, i) => tone(t + i * 0.07, 0.4, 'triangle', f, f, 0.1, 0.005));
+  },
+  ink() {
+    if (!ctx) return; const t = ctx.currentTime;
+    noise(t, 0.25, 'bandpass', 180, 220, 8, 0.25, 0.01); tone(t, 0.18, 'square', 90, 90, 0.04, 0.005);
+  },
   beep(hi) {
     if (!ctx) return; const t = ctx.currentTime;
     tone(t, 0.07, 'square', hi ? 1760 : 1320, hi ? 1760 : 1320, 0.035, 0.002);

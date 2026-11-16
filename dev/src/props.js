@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { G, GRP, ALL, clamp, rand } from './state.js';
 import { A } from './assets.js';
+import { containerTexture } from './level.js';
 
 // Every liftable thing is a photoscanned prop with real mass and real durability.
 // hp = how much gunfire it soaks as a shield before it comes apart.
@@ -17,6 +18,7 @@ export const DEFS = {
   bag:     { model: 'trashbag', mass: 5, hp: 14, shape: 'box', soft: true, label: 'TRASH BAG' },
   box:     { model: 'cardboard', mass: 3, hp: 10, shape: 'box', soft: true, label: 'BOX' },
   fire:    { model: 'fire_barrel', mass: 30, hp: 80, shape: 'cyl', metal: true, fire: true, label: 'FIRE BARREL' },
+  container: { proc: 'container', mass: 900, hp: 900, shape: 'box', metal: true, label: 'CONTAINER' },
   chunk:   { mass: 2.5, hp: 6, shape: 'box', label: 'DEBRIS' },
 };
 
@@ -24,6 +26,12 @@ const TEMPLATES = {};
 function template(type) {
   if (TEMPLATES[type]) return TEMPLATES[type];
   const def = DEFS[type];
+  if (def.proc === 'container') {
+    const g = new THREE.Group();
+    const m = new THREE.Mesh(new THREE.BoxGeometry(6.06, 2.59, 2.44), new THREE.MeshStandardMaterial({ map: containerTexture('#5a2a6a', 'CANTOR SOUND'), roughness: 0.6, metalness: 0.45 }));
+    m.castShadow = m.receiveShadow = true; g.add(m);
+    return (TEMPLATES[type] = { g, size: new THREE.Vector3(6.06, 2.59, 2.44) });
+  }
   const src = A.gltf[def.model].scene;
   src.updateMatrixWorld(true);
   const g = new THREE.Group();
@@ -136,4 +144,32 @@ export function populateProps() {
   for (const [x, z] of [[-10.4, -14.6], [-10.9, -13.6], [10.5, 2.6], [10.9, 3.4], [-10.6, 20.2], [10.2, -20.8], [-0.6, -21.6]]) P('bag', x, z, rand(0, 6));
   for (const [x, z] of [[-9.4, -15.6], [10.0, 1.4], [2.4, -18.6], [-7.8, 18.4]]) P('box', x, z, rand(0, 6));
   P('fire', -10.4, -6.0, 0);
+
+  // ---- Pier 9 Market ----
+  for (const [x, z] of [[-4.3, -33], [4.4, -41], [-4.2, -49], [4.3, -60.5]]) P('trash', x, z, rand(0, 6));
+  for (const [x, z, r] of [[-3.6, -37, 0.3], [-2.9, -37.5, 1.1], [3.4, -52, 0.2], [3.9, -52.7, 1.3], [-2, -58.4, 0.5]]) P('crate', x, z, r);
+  for (const [x, z] of [[4.2, -34], [-4.3, -44.5], [-4.4, -61]]) P('bag', x, z, rand(0, 6));
+  for (const [x, z] of [[3.6, -45], [-3.1, -55], [2, -38]]) P('box', x, z, rand(0, 6));
+  for (const [x, z] of [[2.6, -47.5], [-2.4, -62.5], [3.0, -48.2]]) P('barrel', x, z, rand(0, 6));
+  for (const [x, z] of [[-3.5, -41], [3.9, -58]]) P('drum', x, z, rand(0, 6));
+  P('barrier', 0.8, -43.5, 1.45); P('barrier', -1.5, -56.2, 0.2);
+  P('fire', -4.1, -52.5, 0);
+  // ---- Gut Lane ----
+  for (const [x, z] of [[-3.6, -67], [3.7, -72], [-3.7, -79.5], [3.6, -88.2]]) P(Math.random() < 0.5 ? 'trash' : 'trashR', x, z, rand(0, 6));
+  for (const [x, z] of [[-3.6, -72.3], [-3.2, -72.9], [3.5, -80.6], [3.3, -86.6], [-3.5, -91]]) P('bag', x, z, rand(0, 6));
+  for (const [x, z] of [[3.4, -66.5], [-2.9, -84], [1.5, -77]]) P('box', x, z, rand(0, 6));
+  P('crate', 2.9, -75.5, 0.2); P('crate', 3.4, -75.9, 1.2); P('barrel', -3.4, -82, 0); P('drum', 3.7, -90.6, 0);
+  P('utility', -3.75, -74.6, Math.PI / 2);
+  // ---- Pier 9 docks ----
+  P('container', -6, -106, 0.15); P('container', 2.6, -121.6, -0.1);
+  P('car', -11, -116, 0.6);
+  P('barrier', -3, -99.2, 0); P('barrier', 6, -103, 1.2); P('barrier', -14, -108.5, 0.3);
+  for (const [x, z] of [[3.5, -100.5], [4.2, -101.3], [-9.6, -112.3], [-10.3, -113], [0.5, -126.6]]) P('barrel', x, z, rand(0, 6));
+  for (const [x, z, r] of [[-16.5, -103.6, 0.1], [-15.9, -104.3, 0.9], [-15.2, -121, 0.3], [4.4, -127.7, 0], [5.2, -127.4, 0.6]]) P('crate', x, z, r);
+  P('crate', -16.2, -103.95, 0.5, 0.36 + 0.18 + 0.03);
+  for (const [x, z] of [[12.6, -111.6], [-17.8, -126.5], [12.5, -117.6]]) P('trash', x, z, rand(0, 6));
+  for (const [x, z] of [[-5.5, -126], [7.2, -109]]) P('drum', x, z, rand(0, 6));
+  P('fire', -1.5, -114, 0); P('utility', 13.1, -114.6, -Math.PI / 2);
+  for (const [x, z] of [[-18, -118], [10.8, -95.6], [-7.8, -95.4]]) P('bag', x, z, rand(0, 6));
+  for (const [x, z] of [[-17.4, -118.8], [9.6, -95.8]]) P('box', x, z, rand(0, 6));
 }
