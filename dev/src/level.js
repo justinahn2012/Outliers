@@ -695,9 +695,8 @@ function buildPier9(C) {
   const kx = 11.6, kz = -127.2;
   block(kx - 1.6, kx + 1.6, kz - 1.6, kz + 1.6, 3.0, ['-x'], { noStore: ['-x'], lit: 0 });
   mesh(new THREE.PlaneGeometry(1.3, 2.3), glowMat(1.9, 1.05, 0.45), kx - 1.62, 1.15, kz, -Math.PI / 2, false);
-  sign('MOTH · INK', '#ffb060', false, kx - 1.66, 2.75, kz, -Math.PI / 2, 2.6, 0.5);
-  addSpot(kx - 2.6, 1.6, kz, 0xffa050, 18, 8, 1.6);
-  L.mothDoor = new THREE.Vector3(kx - 2.4, 0, kz);
+  sign('PUMP HOUSE 9', '#bcd0ff', false, kx - 1.66, 2.75, kz, -Math.PI / 2, 2.6, 0.5);
+  addSpot(kx - 2.6, 1.6, kz, 0xbcd0ff, 10, 8, 1.6);
   // lights under the harbour: windows of something below the water
   const winTex = softRectTexture();
   const uw = [];
@@ -929,7 +928,13 @@ function buildExpansion(C, H) {
   // terminal hut (roofless cutaway) at the end of the pier
   const hutMat = new THREE.MeshStandardMaterial({ color: 0x2e3a44, roughness: 0.6, metalness: 0.3 });
   for (const [x0, x1, z0, z1] of [[-61.8, -61.4, -118, -106], [-61.8, -52, -118, -117.6], [-61.8, -52, -106.4, -106]]) { mesh(new THREE.BoxGeometry(x1 - x0, 3.2, z1 - z0), hutMat, (x0 + x1) / 2, 1.6, (z0 + z1) / 2, 0); stat((x0 + x1) / 2, 1.6, (z0 + z1) / 2, (x1 - x0) / 2, 1.6, (z1 - z0) / 2); }
-  for (const bz of [-109, -112, -115]) { mesh(new THREE.BoxGeometry(0.6, 0.45, 2.6), counterMat, -58.5, 0.45, bz, 0); stat(-58.5, 0.3, bz, 0.3, 0.3, 1.3); }
+  for (const bz of [-108.2, -115.8]) { mesh(new THREE.BoxGeometry(0.6, 0.45, 2.6), counterMat, -57.5, 0.45, bz, 0); stat(-57.5, 0.3, bz, 0.3, 0.3, 1.3); }
+  // Moth's: a stairwell door in the terminal's back wall, warm light leaking up from below the pier
+  mesh(new THREE.PlaneGeometry(1.4, 2.4), glowMat(1.9, 1.05, 0.45), -61.36, 1.2, -112, Math.PI / 2, false);
+  mesh(new THREE.BoxGeometry(0.1, 2.7, 0.15), metal, -61.3, 1.35, -112.8, 0, false); mesh(new THREE.BoxGeometry(0.1, 2.7, 0.15), metal, -61.3, 1.35, -111.2, 0, false);
+  sign('MOTH · INK ▾', '#ffb060', false, -61.3, 2.95, -112, Math.PI / 2, 2.6, 0.5);
+  addSpot(-60.2, 1.6, -112, 0xffa050, 16, 8, 1.6);
+  L.mothDoor = new THREE.Vector3(-60.0, 0, -112);
   sign('FERRY · HALDEN ISLAND', '#e8f0ff', false, -52, 3.6, -112, Math.PI / 2, 5.6, 0.7, 'LAST SAILING CANCELLED');
   addSpot(-56, 3, -112, 0xd8e8ff, 14, 10, 1.6, 1);
   // the docked ferry along the north side

@@ -21,7 +21,7 @@ Every scene should push on that question. If a scene doesn't, cut it.
 | 1 | **Agreement is real.** | Every citizen's Tally chip renders one shared city, the Common. What enough minds agree on is true; the Census keeps the record (the Ledger). | The Census can rewrite places, people and the past by changing what people agree on. Some people exist only because everyone agrees they do. |
 | 2 | **Iris is the only writer.** | Halden fused her chip and brain; she edits the Ledger directly. Dash came out read-only: he perceives everything exactly and can change nothing. | Her powers are edits. His are perfect perception. Mirror images. |
 | 3 | **Every edit costs a memory.** | Her brain evicts the least-used memory to cool down. Evicted memories collect in her chip; that collection became REM. | Power has a visible price. The voice in her head grows with every Surge. |
-| 4 | **Edits heal unless witnessed.** | The Common slowly pulls itself back. An edit sticks only if people see it and accept it. | Damage that fades, streets that revert, witnesses who decide what happened. |
+| 4 | **Edits heal unless witnessed.** | The Common is local: the minds nearby hold it in place. An edit sticks only if the people who see it accept it; a crowd that disagrees overrules her. | Damage that fades, streets that revert, witnesses who decide what happened. |
 | 5 | **Ink can't be edited.** | Nothing analog is in the Ledger: skin, paper, iron-gall ink. | The tattoos are ground truth. Anything that contradicts her arm is a lie. |
 
 ## Three layers of reality
@@ -63,6 +63,30 @@ REM is searching the replays for the one memory Iris burned: the reason she eras
 | **3 · Final Count** | + Replay | The Recount · The Cold Room · The Abacus | She's racing Weil to 100%. | None of it was now: every chapter was a replay in Moth's chair, edited by REM. The rain stops. The present begins. |
 
 **Endings:** COMMIT (be counted; Weil permanent; the Tidelines stay deleted) · DIVIDE BY ZERO (spend every memory to bring the Tidelines back; "Count me out.") · secret LET REM (give her body to the Iris who remembers everything).
+
+
+## Chapter 1: why everything is there
+
+Iris's goal: reach Moth's, below Pier 9, before she forgets the way. Everything in the chapter is the Census trying to stop her, and every obstacle works by the rules.
+
+| Element | What it is | Why it works that way |
+|---|---|---|
+| **The count sweep** | The Census sweeps the district for a heat signature with no Tally, sealing it into cells. | Rule 1: Final Count can't finish while she's out there. |
+| **Checkpoints** (amber walls) | Agreement walls, solid because every Census mind nearby agrees they're there. | Rules 1+4: while a squad holds one, her edits are overruled. Clear the squad and the wall loses its count. |
+| **The two that never open** | Market arch and Gut Lane→Pier 9, held from the far side by big garrisons. | Too many minds; she detours. They fall when the sweep collapses at the end. |
+| **Tally relays** | Carry the sweep's agreement across the district; checkpoints hang off them. | Edits on a relay rewrite themselves (Rule 4); a thrown car is real and witnessed, so smashing works. |
+| **Warden shields** | Ledger-locked: no grip through them. | Surge's raw writes break the lock (Rule 2); a broken shield is ordinary matter she can use. |
+| **Clerks** | Stamp temporary Census locks into objects. | Locks fade (Rule 4); Clerks are light enough to throw. |
+| **Cold Storage** | Moth's uncounted people, tagged for Halden; the protocol is still running. | No chips (Rule 1): once out, the Census can't follow. |
+| **The lockdown** | The Census pins her in the rail yard. | The 90-second timer is the Lamplighter's arrival time. |
+| **The Lamplighter** | Searchlight drone; its beam counts by sight, chip or no chip. | Rule 1: held long enough, it writes her into the count and calls troops. |
+| **The informant** | Sold Moth's address; running to report it in person. | Catching him keeps Moth hidden; Rook's tip turns him from witness to ally (Rule 4). |
+| **The Auditor's retreat** | At half strength he walks into the sea, returns on the ferry pier. | Rule 2: read-only, he can't stop counting and runs hot; his armor is a freezer and the sea cools him. |
+| **The ferry pier** | Moth's door is in the old ferry terminal; the Auditor stands between her and it. | The last obstacle is the one person who counts her as one. |
+| **Memory fragments** | Her evicted memories surfacing in the replay; picking one up takes it back from REM. | Rule 3 + the frame ("Oh. That one was in my pile. Keep it."). |
+| **"Cooling down", XP, the arm** | She is literally overheating; each level is a memory Moth can ink. | Rules 3 and 5. |
+
+**Rook's arc:** curious at the plaza → witness at the rail yard → ally at the container yard.
 
 ## Changed from v1
 - Cut: Moth as Halden night nurse inking on REM's instructions (`FOR THE MONEY` now covers `FIND THE TIDELINES`, inked by Iris herself); Rook's Tidelines backstory; the OPEN LEDGER ending.

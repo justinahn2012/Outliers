@@ -1564,12 +1564,16 @@ function startNextStep() {
 }
 function zoneCleared() {
   const i = G.zone; G.zState = 'clear'; G.mission = null;
-  banner('CLEAR', ZD(i).next, 1.8);
+  banner(i < OPENABLE ? 'CHECKPOINT DOWN' : 'SWEEP TERMINATED', ZD(i).next, 2.0);
   sayList(ZD(i).clear);
   hero.hp = Math.min(hero.maxHp, hero.hp + 35);
   gainXP(80);
   if (i < OPENABLE) { openGate(i); G.unlocked = i + 1; const P = level.gates[i].pos; setObjective(ZD(i).next, P); ensureZoneProps(i + 1); }
-  else setObjective(ZD(i).next, level.mothDoor);
+  else {
+    // the sweep is over: every checkpoint left in the district loses its count
+    setObjective(ZD(i).next, level.mothDoor);
+    level.gates.forEach((g, k) => { if (k >= OPENABLE) g.openNow(); });
+  }
 }
 function aliveCount() { return G.enemies.filter(e => !e.dead && e.type !== 'informant').length; }
 function stepDone() {
@@ -1602,7 +1606,7 @@ function updateWaves(dt) {
       M.trickleT -= dt;
       if (M.trickleT <= 0 && aliveCount() + G.waveQueue.length < (S.cap || 5)) { M.trickleT = S.every; G.waveQueue.push(S.trickle[Math.floor(Math.random() * S.trickle.length)]); }
     }
-    if (S.kind === 'lockdown' && M.left > 0) { M.left -= dt; if (M.left <= 0) { banner('LOCKDOWN BROKEN', 'CLEAR THE YARD', 1.6); sfx.gate(); } }
+    if (S.kind === 'lockdown' && M.left > 0) { M.left -= dt; if (M.left <= 0) { banner("IT'S HERE", 'CLEAR THE YARD', 1.6); sfx.radio(); } }
     if (G.waveQueue.length) {
       spawnTimer -= dt;
       if (spawnTimer <= 0) { const t = G.waveQueue.shift(); spawnNow(t); spawnTimer = (t === 'auditor' || t === 'lamplighter') ? 1.6 : 0.7; }
@@ -1631,7 +1635,7 @@ function missionText(S, M) {
   switch (S.kind) {
     case 'relays': { const d = RELAYS.filter(r => !r.alive).length; return d < RELAYS.length ? `RELAYS ${d}/${RELAYS.length} · ${enemies}` : enemies; }
     case 'rescue': { const d = CAGES.filter(c => c.freed).length; return d < CAGES.length ? `FREED ${d}/${CAGES.length} · ${enemies}` : enemies; }
-    case 'lockdown': return M.left > 0 ? `LOCKDOWN ${mmss(M.left)} · ${enemies}` : enemies;
+    case 'lockdown': return M.left > 0 ? `LAMPLIGHTER IN ${mmss(M.left)} · ${enemies}` : enemies;
     case 'chase': return G.chase ? `INFORMANT ${mmss(G.chase.left)}` : '';
     default: return enemies;
   }
@@ -1840,6 +1844,7 @@ function updateFragments(dt) {
       gainXP(45, _v2.set(f.x, 1.2, f.z)); sfx.levelUp(); G.glitch = Math.max(G.glitch, 0.25);
       num(_v2.set(f.x, 2.2, f.z), 'MEMORY RECOVERED', 'psi', 1.0);
       DLG.q.unshift({ w: 'memory', t: f.text });
+      if (!G.saidFrag && fragCount() === 1) { G.saidFrag = true; sayList(CHAPTER.firstFragment); }
     }
   }
 }
