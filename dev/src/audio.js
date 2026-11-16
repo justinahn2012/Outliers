@@ -119,32 +119,52 @@ export const sfx = {
   },
   surgeCharge() {
     if (!ctx) return; const t = ctx.currentTime;
-    noise(t, 0.16, 'bandpass', 300, 2600, 5, 0.5, 0.12);
-    tone(t, 0.16, 'sine', 90, 260, 0.35, 0.1);
+    [660, 880, 1320].forEach((f, i) => tone(t + i * 0.035, 0.05, 'square', f, f, 0.05, 0.002));
+    noise(t, 0.16, 'bandpass', 400, 4200, 6, 0.35, 0.12);
+    tone(t, 0.16, 'sine', 90, 260, 0.3, 0.1);
   },
+  // digital burst: sub drop, a crushed blast, a falling square sweep and stuttering static
   surge() {
     if (!ctx) return; const t = ctx.currentTime;
-    tone(t, 1.1, 'sine', 160, 26, 1.0, 0.003);              // sub drop
-    noise(t, 0.9, 'lowpass', 5200, 90, 0.9, 1.0, 0.002);     // blast
-    noise(t + 0.02, 0.5, 'bandpass', 1800, 400, 2.5, 0.45, 0.004);
-    tone(t, 0.5, 'sawtooth', 880, 110, 0.12, 0.002);         // electric tear
-    for (let i = 0; i < 9; i++) noise(t + 0.03 + i * 0.035 + Math.random() * 0.02, 0.05, 'highpass', 5000, 3000, 0.7, 0.18 * (1 - i / 10), 0.001); // crackle
+    tone(t, 1.0, 'sine', 150, 28, 1.0, 0.003);
+    noise(t, 0.7, 'lowpass', 6000, 120, 0.9, 0.85, 0.002);
+    tone(t, 0.35, 'square', 1760, 110, 0.07, 0.002);
+    tone(t + 0.01, 0.28, 'sawtooth', 2400, 300, 0.05, 0.002);
+    for (let i = 0; i < 10; i++) {
+      const f = 900 + Math.random() * 5000;
+      noise(t + 0.04 + i * 0.03, 0.022, 'bandpass', f, f, 3, 0.22 * (1 - i / 11), 0.001);
+    }
   },
+  // time stops: a tape-stop sweep down and a high ping
   inhale() {
     if (!ctx) return; const t = ctx.currentTime;
-    noise(t, 1.2, 'bandpass', 200, 2400, 4, 0.5, 0.9);
-    tone(t, 1.3, 'sine', 60, 240, 0.35, 1.0);
+    tone(t, 0.7, 'sawtooth', 520, 40, 0.14, 0.005);
+    tone(t, 0.9, 'sine', 180, 30, 0.6, 0.005);
+    tone(t + 0.02, 1.4, 'sine', 2637, 2637, 0.05, 0.004);
+    noise(t, 0.5, 'lowpass', 3000, 80, 0.8, 0.4, 0.004);
   },
+  tag(n) {
+    if (!ctx) return; const t = ctx.currentTime;
+    const f = 880 * Math.pow(2, ((n * 2) % 14) / 12);
+    tone(t, 0.06, 'square', f, f, 0.045, 0.001);
+    tone(t, 0.04, 'sine', f * 2, f * 2, 0.03, 0.001);
+  },
+  // tagged things hang: a low drone under fast processing ticks
   vortex() {
     if (!ctx) return; const t = ctx.currentTime;
-    noise(t, 2.1, 'bandpass', 400, 1800, 6, 0.4, 0.3);
-    tone(t, 2.1, 'sawtooth', 55, 110, 0.12, 0.4);
+    tone(t, 1.7, 'sawtooth', 55, 70, 0.1, 0.3);
+    noise(t, 1.7, 'bandpass', 600, 2200, 8, 0.18, 0.4);
+    for (let i = 0; i < 14; i++) { const f = [440, 660, 550, 880][i % 4]; tone(t + 0.1 + i * 0.105, 0.035, 'square', f, f, 0.025 + i * 0.002, 0.001); }
   },
   release() {
     if (!ctx) return; const t = ctx.currentTime;
-    noise(t, 2.0, 'lowpass', 6000, 70, 0.6, 1.0, 0.003);
     tone(t, 1.4, 'sine', 140, 24, 1.0, 0.003);
-    tone(t, 0.6, 'triangle', 880, 110, 0.2, 0.003);
+    noise(t, 1.6, 'lowpass', 7000, 70, 0.6, 1.0, 0.003);
+    tone(t, 0.5, 'square', 2200, 80, 0.08, 0.002);
+    for (let i = 0; i < 14; i++) {
+      const f = 700 + Math.random() * 6000;
+      noise(t + 0.03 + i * 0.028, 0.02, 'bandpass', f, f, 3, 0.25 * (1 - i / 15), 0.001);
+    }
   },
   beep(hi) {
     if (!ctx) return; const t = ctx.currentTime;

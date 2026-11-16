@@ -1,4 +1,6 @@
-# OUTLIERS: Undertow — notes for Claude
+# OUTLIERS: Overclock — notes for Claude
+
+- Hero: Null (Iris Calloway), violet is her signature colour. Surge = digital burst (pixel-tile ground scan, data wall, voxel cubes, screen glitch). Ultimate = Root Access (time freeze scan, reticle tags, everything hangs, then flung at once). Story bible in `docs/STORY.md`.
 
 - Owner plays on iPhone (portrait first) and uploads/deploys from his phone. Keep the playable build FLAT at the repo root: `index.html` + `pack1.js`..`pack3.js`. Push changes directly to `main`.
 - Source lives in `dev/src` (three.js r187 + cannon-es, bundled by esbuild into one inline script). Build with `cd dev && npm install && node build.js`; repack assets with `python3 pack.py` only when `dev/assets_src` changes.

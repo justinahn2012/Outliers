@@ -32,7 +32,7 @@ export const GRP = {
   HERO: 2,
   ENEMY: 4,
   PROP: 8,
-  HELD: 16,   // held or thrown by Iris: ignores Iris
+  HELD: 16,   // held or thrown by Null: ignores her
   STATIC: 32,
 };
 export const ALL = 0xffff;
@@ -41,8 +41,8 @@ export const NO_HERO = ALL & ~GRP.HERO;
 export const TUNE = {
   GRAV: 22,
   HERO_SPEED: 6.4,
-  GRAB_RANGE: 21,      // how far away Iris can seize something
-  HOLD_MAX: 9.5,       // held objects stay within this radius of Iris
+  GRAB_RANGE: 21,      // how far away Null can seize something
+  HOLD_MAX: 9.5,       // held objects stay within this radius of Null
   HOLD_MIN: 1.5,
   FLICK_MIN: 360,      // css px / s
   AIM_CONE: 0.5,       // radians (~29 deg)

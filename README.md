@@ -1,6 +1,6 @@
-# OUTLIERS: Undertow
+# OUTLIERS: Overclock
 
-Touch-first telekinesis brawler. Iris Calloway ("Undertow") lifts, swings, flicks and shields with anything on a rain-soaked Port Halcyon street while the Census hunts her.
+Touch-first telekinesis brawler. Iris Calloway, codename **Null**, was erased by the Census and can now edit reality like data: she lifts, swings, flicks and shields with anything on a rain-soaked street while the Census hunts her. Story bible: [`docs/STORY.md`](docs/STORY.md).
 
 **Play:** open `index.html` (it loads `pack1.js`–`pack3.js` from the same folder). Deploys as-is on Cloudflare Pages / GitHub Pages from the repo root.
 
@@ -17,6 +17,6 @@ python3 pack.py      # assets_src/ -> ../pack1.js..pack3.js (only when assets ch
 
 ## Asset credits
 - Props, street/brick textures, night HDRI: Poly Haven (CC0)
-- Iris and Census troopers + motion capture: Microsoft Rocketbox Avatar Library (MIT)
+- Null (Iris) and Census troopers + motion capture: Microsoft Rocketbox Avatar Library (MIT)
 - Auditor heavy armour: Mixamo "Vanguard" (via three.js examples; Adobe Mixamo terms)
 - Engine: three.js (MIT), cannon-es (MIT)

@@ -4,8 +4,8 @@ import { G, GRP, ALL, clamp, damp } from './state.js';
 import { makeCharacter, findBone, blobShadow } from './assets.js';
 import { sharedHaloTexture } from './powers.js';
 
-// Iris Calloway — a real rigged, motion-captured actor (charcoal leather, silver hair),
-// with telekinetic overlays: floating hair, glowing hands, reach-and-hold arm IK.
+// Null (Iris Calloway) — a real rigged, motion-captured actor (charcoal leather, silver hair),
+// with telekinetic overlays: glowing hands, brow tether, conductor-style hold arm IK.
 export function createHero() {
   const root = new THREE.Group();
   const model = new THREE.Group(); root.add(model);
@@ -252,7 +252,7 @@ export function updateHeroVisual(h, dt, holds) {
       aimArm(U, F, H, _t, k);
     }
   } else if (lev > 0.05) {
-    // UNDERTOW: arms spread out to her sides, rising as the tide builds around her
+    // ROOT ACCESS: arms spread out to her sides, rising while everything she tagged hangs frozen
     h.aimW[0] += (lev - h.aimW[0]) * damp(10, dt); h.aimW[1] += (lev - h.aimW[1]) * damp(10, dt);
     const swell = G.ultState && G.ultState.phase === 'vortex' ? Math.min(1, G.ultState.t / 1.6) : 0;
     const arms = [[B.rU, B.rF, B.rH], [B.lU, B.lF, B.lH]];

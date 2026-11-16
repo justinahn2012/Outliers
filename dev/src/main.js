@@ -16,7 +16,7 @@ import { createHero, updateHeroVisual } from './hero.js';
 import { spawnEnemy, removeEnemy, updateEnemyVisual, setRagdoll, setEnemyGlow, ETYPES } from './enemies.js';
 import { initInput, moveVector, input } from './input.js';
 import { loadAssets, A } from './assets.js';
-import { Powers, Shock, TideWaves } from './powers.js';
+import { Powers, Shock, Front } from './powers.js';
 
 // ======================= renderer / scene =======================
 const canvas = document.getElementById('c');
@@ -34,13 +34,28 @@ G.scene = scene; G.camera = camera; G.renderer = renderer;
 // Filmic finish: colour grade (teal shadows / warm highlights), vignette, fine grain, slight lens fringing
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) },
-    uShockC: { value: new THREE.Vector2(0.5, 0.5) }, uShockR: { value: 0 }, uShockS: { value: 0 }, uAspect: { value: 1 } },
+    uShockC: { value: new THREE.Vector2(0.5, 0.5) }, uShockR: { value: 0 }, uShockS: { value: 0 }, uAspect: { value: 1 },
+    uGlitch: { value: 0 }, uFreeze: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
   fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform vec2 uRes; varying vec2 vUv;
-    uniform vec2 uShockC; uniform float uShockR; uniform float uShockS; uniform float uAspect;
+    uniform vec2 uShockC; uniform float uShockR; uniform float uShockS; uniform float uAspect; uniform float uGlitch; uniform float uFreeze;
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)) + uTime * 7.0) * 43758.5453); }
+    float hs(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
     void main(){
       vec2 uv = vUv; float sband = 0.0; vec2 sdir = vec2(0.0);
+      // digital glitch: torn horizontal bands, displaced blocks, RGB split
+      float tear = 0.0, split = 0.0;
+      if (uGlitch > 0.001) {
+        float tq = floor(uTime * 24.0);
+        float band = floor(vUv.y * 28.0);
+        float hb = hs(vec2(band, tq));
+        tear = step(1.0 - 0.5 * uGlitch, hb);
+        uv.x += tear * (hs(vec2(band, tq + 1.7)) - 0.5) * 0.09 * uGlitch;
+        vec2 blk = floor(vUv * vec2(10.0, 18.0));
+        float hk = hs(blk + tq * 1.31);
+        if (hk > 1.0 - 0.1 * uGlitch) uv += (vec2(hs(blk + 3.1 + tq), hs(blk + 7.7 + tq)) - 0.5) * 0.06 * uGlitch;
+        split = 0.006 * uGlitch + tear * 0.012 * uGlitch;
+      }
       if (uShockS > 0.0) {
         vec2 d = uv - uShockC; d.x *= uAspect; float r = length(d);
         sband = exp(-pow((r - uShockR) / 0.05, 2.0)) * smoothstep(0.0, 0.08, uShockR);
@@ -49,9 +64,21 @@ const GradeShader = {
       }
       vec2 c = uv - 0.5; float r2 = dot(c, c);
       vec2 off = c * r2 * 0.012 + sdir * sband * uShockS * 0.35;
-      vec3 col = vec3(texture2D(tDiffuse, uv + off).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - off).b);
+      vec3 col = vec3(texture2D(tDiffuse, uv + off + vec2(split, 0.0)).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - off - vec2(split, 0.0)).b);
       col += vec3(0.55, 0.42, 1.0) * sband * uShockS * 5.0;
       float l = dot(col, vec3(0.299, 0.587, 0.114));
+      if (uGlitch > 0.001) {
+        col += vec3(0.5, 0.3, 1.0) * tear * 0.22 * uGlitch;
+        col *= 1.0 - 0.22 * uGlitch * step(0.5, fract(vUv.y * uRes.y * 0.25));
+      }
+      if (uFreeze > 0.001) {
+        // frozen frame: drained colour, cold tint, scanlines, but her violet survives
+        float keep = smoothstep(0.08, 0.3, col.b - col.g);
+        vec3 frozen = vec3(l) * vec3(0.82, 0.86, 1.08);
+        col = mix(col, mix(frozen, col, keep), uFreeze * 0.8);
+        col *= 1.0 - 0.12 * uFreeze * step(0.5, fract(vUv.y * uRes.y * 0.33 - uTime * 2.0));
+        l = dot(col, vec3(0.299, 0.587, 0.114));
+      }
       vec3 shadows = vec3(0.86, 0.98, 1.10), highs = vec3(1.06, 1.0, 0.92);
       col *= mix(shadows, highs, smoothstep(0.05, 0.6, l));
       col = mix(vec3(l), col, 1.06);
@@ -105,7 +132,6 @@ FX.init(scene, document.getElementById('nums'));
 G.fx = FX;
 const tethers = [new Tether(scene), new Tether(scene), new Tether(scene)];
 Powers.init(scene);
-wireSpikes();
 // crackling energy arcs (reuse the tether ribbon)
 const arcs = Array.from({ length: 8 }, () => ({ t: new Tether(scene), life: 0, ml: 1, a: new THREE.Vector3(), b: new THREE.Vector3(), follow: null, fromHand: 0, w: 0.07 }));
 for (const a of arcs) a.t.mat.uniforms.uColor.value.setRGB(0.75, 0.6, 1.0);
@@ -148,7 +174,7 @@ async function boot() {
   hero = createHero();
   G.hero = hero;
   resetProps();
-  btn.disabled = false; btn.textContent = 'HOLD YOUR BREATH';
+  btn.disabled = false; btn.textContent = 'OVERCLOCK';
   requestAnimationFrame(frame);
 }
 
@@ -363,7 +389,7 @@ function hurtHero(dmg, from, knock = 6) {
   if (hero.dead || hero.invuln > 0 || G.ultState || G.mode !== 'play') return;
   hero.hp -= dmg; hero.lastHurt = G.t; hero.invuln = 0.3;
   hurtA = Math.min(1, hurtA + 0.5 + dmg / 40);
-  addTrauma(0.32 + dmg / 80); sfx.hurt();
+  addTrauma(0.32 + dmg / 80); sfx.hurt(); G.glitch = Math.max(G.glitch || 0, 0.18 + dmg / 60);
   const hp = hero.body.position;
   num(_v2.set(hp.x, hp.y + 1.2, hp.z), '-' + Math.round(dmg), 'hurt', 0.9);
   if (from) {
@@ -448,6 +474,9 @@ function startHold(id, o, x, y) {
   }
   b.velocity.y += 2.5;
   G.holds.set(id, h);
+  if (o.kind === 'prop') Powers.brackets.attach(o, o.size, 0);
+  else if (o.kind === 'enemy') { const sc = o.def.scale; Powers.brackets.attach(o, _v2.set(0.85 * sc, 1.75 * sc, 0.85 * sc), -0.05 * sc); }
+  else Powers.brackets.attach(o, _v2.set(0.32, 0.32, 0.32), 0);
   sfx.lift(o.mass);
   FX.psi(_v2.set(b.position.x, b.position.y, b.position.z), 18, 3, 0.26, 0.6);
   FX.rings.spawn(b.position.x, 0.06, b.position.z, 0.2, 1.4 + o.radius, 0.4, 0x9b7bff, 0.9);
@@ -457,6 +486,7 @@ function startHold(id, o, x, y) {
 function endHold(h) {
   G.holds.delete(h.id);
   const o = h.obj; o.held = null;
+  Powers.brackets.detach(o);
   if (o.kind === 'prop') setGlow(o, 0.8);
 }
 
@@ -661,6 +691,7 @@ function explosion(p, r, eDmg, hDmg, byHero) {
   }
 }
 function explodeBarrel(o) {
+  G.glitch = Math.max(G.glitch || 0, 0.3);
   if (!o.alive) return;
   const p = o.body.position.clone ? new THREE.Vector3(o.body.position.x, o.body.position.y, o.body.position.z) : o.body.position;
   removeProp(o);
@@ -748,6 +779,7 @@ function removeGrenade(g) {
   const i = G.grenades.indexOf(g); if (i >= 0) G.grenades.splice(i, 1);
 }
 function explodeGrenade(g) {
+  G.glitch = Math.max(G.glitch || 0, 0.3);
   if (!g.alive) return;
   const p = new THREE.Vector3(g.body.position.x, g.body.position.y, g.body.position.z);
   const byHero = g.byHero;
@@ -786,7 +818,7 @@ function updateBolts(dt) {
     B.p.addScaledVector(B.v, dt); B.life -= dt; B.m.position.copy(B.p);
     if (Math.random() < 0.7) FX.add.emit(B.p.x, B.p.y, B.p.z, 0, 0, 0, 1.6, 0.8, 0.2, 0.18, 0.2, 0.02);
     let dead = B.life <= 0;
-    // blocked by anything Iris holds in the line of fire (judged top-down, like the player sees it)
+    // blocked by anything Null holds in the line of fire (judged top-down, like the player sees it)
     if (!dead) for (const h of G.holds.values()) {
       const o = h.obj, c = o.body.position;
       const rh = (o.kind === 'prop' ? o.hRad : o.kind === 'enemy' ? 0.55 : 0.3) + 0.2;
@@ -1018,84 +1050,76 @@ function gunPos(e) {
   return new THREE.Vector3(b.position.x + fx * 0.75 + fz * 0.25, b.position.y + 0.55, b.position.z + fz * 0.75 - fx * 0.25);
 }
 
-// ======================= SURGE & UNDERTOW =======================
+// ======================= SURGE & ROOT ACCESS =======================
+const VIO = new THREE.Color(1.0, 0.65, 2.2);
+// a burst of data cubes in her palette: mostly violet, some white-hot, a few deep
+function voxelPuff(x, y, z, n, sp, up, size = 0.12, life = 0.7) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * 6.28, s = rand(0.3, 1) * sp, r = Math.random();
+    const c = r < 0.22 ? [2.4, 2.2, 3.2] : r < 0.75 ? [1.1, 0.6, 2.8] : [0.55, 0.3, 1.6];
+    Powers.voxels.emit(x, y, z, Math.cos(a) * s, rand(0.3, 1) * up, Math.sin(a) * s, size * rand(0.6, 1.4), life * rand(0.6, 1.2), c[0], c[1], c[2], 9);
+  }
+}
+function glitchEnemy(e, t = 0.4) { e.glitchT = Math.max(e.glitchT || 0, t); }
+
 function doSurge() {
   if (G.mode !== 'play' || hero.dead || G.ultState || G.surge) return;
   const hp = heroCenter();
   if (G.surgeCD > 0) return;
   if (hero.focus < 20) { num(_v2.set(hp.x, hp.y + 1.6, hp.z), 'NO FOCUS', 'psi', 0.8); return; }
   hero.focus -= 20; hero.focusDelay = 0.6; G.surgeCD = 3.2;
-  // a beat of anticipation: light drains inward to her chest
+  // a beat of anticipation: light and data drain inward to her chest
   G.surge = { t: 0, fired: false };
   G.slowT = 0.14; G.slowScale = 0.45;
   Powers.halos.spawn(_v2.set(hp.x, hp.y + 0.45, hp.z), 4.5, 0.7, 0.16, new THREE.Color(1.6, 1.1, 3.2), 1.3, { follow: hero.body.position, yOff: 0.45, ease: 'in' });
-  for (let i = 0; i < 40; i++) { const a = Math.random() * 6.28, r = rand(2.5, 4.5); FX.add.emit(hp.x + Math.cos(a) * r, hp.y + rand(-0.6, 1.2), hp.z + Math.sin(a) * r, -Math.cos(a) * r * 6, 0, -Math.sin(a) * r * 6, 0.7, 0.5, 1.8, 0.16, 0.22, 0.06, 0, 0); }
+  for (let i = 0; i < 26; i++) { const a = Math.random() * 6.28, r = rand(2.5, 4.5); Powers.voxels.emit(hp.x + Math.cos(a) * r, hp.y + rand(-0.4, 1.2), hp.z + Math.sin(a) * r, -Math.cos(a) * r * 6, 0, -Math.sin(a) * r * 6, rand(0.06, 0.12), 0.16, 1.1, 0.6, 2.8, 0); }
+  G.glitch = Math.max(G.glitch || 0, 0.25);
   sfx.surgeCharge();
   hero.surgePose = 0;
 }
+const SURGE_R = 7.2, SURGE_SCAN = 0.6;
 function updateSurge(rdt) {
   const S = G.surge; if (!S) return;
   S.t += rdt;
   if (!S.fired && S.t > 0.14) { S.fired = true; S.t0 = S.t; surgeRelease(S); }
   if (S.fired) {
     const age = S.t - S.t0;
+    // the street voxelizes as the front passes: cubes pop up along it
+    if (age < SURGE_SCAN) {
+      const r = Front.radiusAt(SURGE_R, age / SURGE_SCAN), n = Math.round(4 + r * 1.1);
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * 6.28, rr = r + rand(-0.3, 0.2), c = Math.random() < 0.2 ? [2.4, 2.2, 3.2] : [1.0, 0.55, 2.6];
+        Powers.voxels.emit(S.c.x + Math.cos(a) * rr, 0.1, S.c.z + Math.sin(a) * rr, Math.cos(a) * rand(1, 4), rand(2.5, 7), Math.sin(a) * rand(1, 4), rand(0.09, 0.2), rand(0.5, 0.95), c[0], c[1], c[2], 11);
+      }
+    }
     for (const h of S.hits) if (!h.done && age >= h.at) { h.done = true; h.fn(); }
     if (age > 1.6 && S.hits.every(h => h.done)) G.surge = null;
   }
 }
-// spike eruption + shatter feedback (shared by Surge and Undertow)
-let lastCrunch = 0, lastShatter = 0;
-function wireSpikes() {
-  Powers.spikes.onErupt = (it) => {
-    const p = it.pos;
-    for (let k = 0; k < 4; k++) FX.smoke.emit(p.x, 0.1, p.z, rand(-2.5, 2.5), rand(3, 7), rand(-2.5, 2.5), 0.07, 0.07, 0.08, rand(0.5, 0.9), rand(0.06, 0.12), 0.05, 20, 0.3, 1);
-    for (let k = 0; k < 3; k++) FX.add.emit(p.x, 0.2, p.z, rand(-2, 2), rand(2, 5), rand(-2, 2), 1.0, 0.7, 2.2, rand(0.2, 0.4), 0.14, 0.02, 10, 0.5, 1);
-    if (G.rt - lastCrunch > 0.045) { lastCrunch = G.rt; sfx.crunch(); }
-  };
-  Powers.spikes.onShatter = (it) => {
-    const p = it.pos, top = it.h * 0.6;
-    for (let k = 0; k < 7; k++) FX.add.emit(p.x + rand(-0.15, 0.15), rand(0.2, top), p.z + rand(-0.15, 0.15), rand(-3, 3), rand(1, 4), rand(-3, 3), 0.9, 0.65, 2.3, rand(0.35, 0.7), rand(0.08, 0.16), 0.02, 14, 0.8, 1);
-    if (G.rt - lastShatter > 0.06) { lastShatter = G.rt; sfx.shatter(); }
-  };
-}
-function eruption(center, scale, opts = {}) {
-  const R = 6.6 * scale;
-  const rings = [];
-  const nR = Math.round(5 * Math.sqrt(scale));
-  for (let i = 0; i < nR; i++) {
-    const r = R * (0.2 + 0.8 * (i / (nR - 1)));
-    rings.push({ r, n: Math.round(8 + r * 2.6), h: (1.1 + Math.sin((i / (nR - 1)) * Math.PI * 0.8) * 1.3) * Math.min(1.6, 0.8 + scale * 0.25), w: 0.16 + (i / nR) * 0.12 });
-  }
-  Powers.spikes.burst(center, rings, opts.speed || 17, opts.hold || 0.32);
-  Powers.fissures.spawn(center, R * 1.12, opts.fissureLife || 1.6, new THREE.Color(0.75, 0.5, 1.6));
-  Powers.walls.spawn(center, R * 1.08, 1.5 * Math.min(1.6, scale), R / (opts.speed || 17) + 0.3);
-  Powers.beams.spawn(center, 0.9 * Math.min(2, scale), 12 * Math.min(2, scale), 0.45, new THREE.Color(1.2, 0.9, 2.4));
-  Powers.shocks.spawn(center, R * 1.1, R / (opts.speed || 17) + 0.25, new THREE.Color(0.75, 0.6, 1.5), 0.7);
-  return R;
-}
 function surgeRelease(S) {
   const hp = heroCenter();
+  S.c = new THREE.Vector3(hp.x, 0, hp.z);
   const chest = new THREE.Vector3(hp.x, hp.y + 0.45, hp.z);
   sfx.surge(); addTrauma(0.65); hitStop(0.06); screenFlash(0.04);
-  G.bloomKick = 0.6; camState.punch = 1; hero.surgePose = 1;
+  G.bloomKick = 0.32; camState.punch = 1; hero.surgePose = 1;
+  G.glitch = 0.9;
   // the lamp-style halo, in her violet
-  Powers.halos.spawn(chest, 0.8, 5.5, 0.4, new THREE.Color(1.0, 0.65, 2.2), 0.65, { hold: 0.04 });
-  Powers.halos.spawn(chest, 0.4, 2.0, 0.22, new THREE.Color(1.8, 1.6, 2.6), 0.8);
-  Powers.halos.spawn(chest, 2.0, 4.0, 1.0, new THREE.Color(0.8, 0.5, 1.8), 0.5, { follow: hero.body.position, yOff: 0.45 });
-  Shock.fire(chest, 0.55, 0.5, 0.035);
-  FX.flash(hp, 0xa58cff, 70);
-  const R = 7.2, waveLife = 0.85;
-  Powers.tides.spawn(hp, R, 2.2, waveLife, 1.3);
-  Powers.fissures.spawn(hp, R * 1.05, 1.3, new THREE.Color(0.6, 0.45, 1.4));
-  Powers.beams.spawn(hp, 0.8, 10, 0.4, new THREE.Color(1.0, 0.8, 2.2));
-  Powers.shocks.spawn(hp, R * 1.05, waveLife * 0.8, new THREE.Color(0.55, 0.6, 1.3), 0.45);
-  const hitAt = (d) => TideWaves.timeToReach(R, d, waveLife);
-  // spray kicked up by the wave front
-  for (let i = 0; i < 120; i++) {
-    const a = (i / 120) * Math.PI * 2 + rand(-0.03, 0.03), sp = rand(10, 16);
-    FX.add.emit(hp.x + Math.cos(a) * 0.5, 0.08, hp.z + Math.sin(a) * 0.5, Math.cos(a) * sp, rand(2, 6), Math.sin(a) * sp, 0.55, 0.62, 0.9, rand(0.35, 0.7), rand(0.07, 0.13), 0.03, 16, 1.2, 0.85);
+  Powers.halos.spawn(chest, 0.8, 5.0, 0.35, new THREE.Color(1.0, 0.65, 2.2), 0.45, { hold: 0.04 });
+  Powers.halos.spawn(chest, 0.4, 1.8, 0.2, new THREE.Color(1.8, 1.6, 2.6), 0.5);
+  Shock.fire(chest, 0.5, 0.5, 0.03);
+  FX.flash(hp, 0xa58cff, 25);
+  const R = SURGE_R;
+  Powers.grids.spawn(hp, R, SURGE_SCAN, 1.5, new THREE.Color(0.85, 0.5, 2.3), 0.45);
+  Powers.walls.spawn(hp, R * 1.02, 1.7, SURGE_SCAN * 1.25, new THREE.Color(0.5, 0.28, 1.45));
+  Powers.beams.spawn(hp, 0.7, 10, 0.35, new THREE.Color(1.0, 0.8, 2.2));
+  const hitAt = (d) => Front.timeToReach(R, d, SURGE_SCAN);
+  // the burst itself: a shell of data cubes thrown off her body
+  for (let i = 0; i < 110; i++) {
+    const a = (i / 110) * Math.PI * 2 + rand(-0.05, 0.05), sp = rand(9, 15), r = Math.random();
+    const c = r < 0.1 ? [2.0, 1.8, 2.8] : r < 0.7 ? [0.9, 0.48, 2.3] : [0.5, 0.28, 1.4];
+    Powers.voxels.emit(chest.x + Math.cos(a) * 1.1, chest.y + rand(-0.5, 0.5), chest.z + Math.sin(a) * 0.4, Math.cos(a) * sp, rand(1, 5), Math.sin(a) * sp, rand(0.08, 0.22), rand(0.45, 0.9), c[0], c[1], c[2], 6);
   }
-  // each enemy is struck when the spike wave reaches them: launched skyward, arcs crackle to them
+  // each enemy is hit when the front reaches them: glitches out, bursts into cubes, launched
   S.hits = [];
   for (const e of [...G.enemies]) {
     if (e.dead || !e.alive || e.held) continue;
@@ -1105,14 +1129,13 @@ function surgeRelease(S) {
     S.hits.push({ at: hitAt(d), done: false, fn: () => {
       if (e.dead || !e.alive) return;
       arc(new THREE.Vector3(ep.x, ep.y, ep.z), 0.3, ep, 0.09);
-      FX.sparks(_v2.set(ep.x, ep.y + 0.3, ep.z), 16, 7, [0.85, 0.65, 1.0]);
+      voxelPuff(ep.x, ep.y + 0.2, ep.z, 18, 5, 5, 0.12, 0.7);
       Powers.halos.spawn(_v2.set(ep.x, ep.y + 0.3, ep.z), 0.4, 2.2, 0.3, new THREE.Color(1.4, 1.0, 2.6), 0.7);
-      setEnemyGlow(e, 0.9);
+      setEnemyGlow(e, 0.9); glitchEnemy(e, 0.5);
       if (e.type === 'auditor') { damageEnemy(e, 22, dir, 0, 'surge'); e.body.velocity.x += dir.x * 4; e.body.velocity.z += dir.z * 4; e.body.velocity.y += 3; return; }
       damageEnemy(e, Math.round(14 + 14 * f), dir, 0, 'surge');
       if (e.dead || e.state !== 'ragdoll') { setRagdoll(e, true); e.state = 'ragdoll'; e.downT = 0; cancelAttack(e); }
       e.body.velocity.set(dir.x * (9 + 5 * f), 5 + 4 * f, dir.z * (9 + 5 * f));
-      for (let k = 0; k < 18; k++) FX.add.emit(ep.x, ep.y, ep.z, dir.x * rand(2, 7) + rand(-1.5, 1.5), rand(1.5, 5), dir.z * rand(2, 7) + rand(-1.5, 1.5), 0.62, 0.72, 1.0, rand(0.35, 0.7), rand(0.07, 0.13), 0.02, 16, 0.8, 0.9);
       e.body.angularVelocity.set(dir.z * 7 + rand(-3, 3), rand(-4, 4), -dir.x * 7 + rand(-3, 3));
       e.thrown = true; e.thrownT = 0;
     } });
@@ -1129,107 +1152,140 @@ function surgeRelease(S) {
       o.body.angularVelocity.set(rand(-7, 7) * f, rand(-7, 7) * f, rand(-7, 7) * f);
       o.thrown = true; o.thrownT = 0; o.dropped = false; o.body.collisionFilterGroup = GRP.HELD; o.body.collisionFilterMask = NO_HERO;
       if (o.kind === 'grenade') o.byHero = true;
+      if (o.kind === 'prop') { setGlow(o, 0.9); voxelPuff(op.x, op.y, op.z, 5, 3, 4, 0.1, 0.5); }
     } });
   }
   for (let i = 0; i < 4; i++) { const a = Math.random() * 6.28, r = rand(2.5, 5.5); arc(new THREE.Vector3(hp.x + Math.cos(a) * r, rand(0.2, 1.5), hp.z + Math.sin(a) * r), 0.22); }
 }
 
+// ROOT ACCESS: time stops, a scan sweeps the block and locks onto everything,
+// it all hangs in the air, then she sends every tagged thing flying at once.
+const ROOT_R = 18, ROOT_SCAN = 0.85;
 function startUlt() {
   if (G.mode !== 'play' || hero.dead || G.ultState || G.ult < 100) return;
   G.ult = 0;
   for (const h of [...G.holds.values()]) { endHold(h); dropObj(h.obj); }
   for (const [id, p] of input.pointers) if (p.role === 'grab') input.pointers.delete(id);
-  G.ultState = { phase: 'inhale', t: 0, caught: [] };
-  G.slowT = 0.55; G.slowScale = 0.3;
   const hpU = heroCenter();
-  Powers.halos.spawn(_v2.set(hpU.x, hpU.y + 0.9, hpU.z), 9, 1.4, 0.7, new THREE.Color(1.3, 0.9, 2.8), 1.1, { follow: hero.body.position, yOff: 0.9, ease: 'in' });
-  Powers.shocks.spawn(hpU, 9, 0.7, new THREE.Color(0.7, 0.5, 1.5), 0.6);
-  banner('HOLD YOUR BREATH.', '', 1.4);
+  const U = G.ultState = { phase: 'inhale', t: 0, caught: [], tags: [], c: new THREE.Vector3(hpU.x, 0, hpU.z) };
+  G.slowT = ROOT_SCAN + 0.15; G.slowScale = 0.04;     // the world all but stops
+  G.freeze = 1; G.glitch = Math.max(G.glitch || 0, 0.6);
+  Powers.halos.spawn(_v2.set(hpU.x, hpU.y + 0.9, hpU.z), 6, 1.4, 0.6, new THREE.Color(1.3, 0.9, 2.8), 0.55, { follow: hero.body.position, yOff: 0.9, ease: 'in' });
+  Powers.grids.spawn(hpU, ROOT_R, ROOT_SCAN, 3.4, new THREE.Color(0.6, 0.36, 1.7), 0.6);
+  Powers.walls.spawn(hpU, ROOT_R, 1.2, ROOT_SCAN * 1.15, new THREE.Color(0.4, 0.24, 1.2));
+  // everything the scan will reach, in the order the front reaches it
+  let i = 0;
+  for (const o of [...G.props, ...G.grenades, ...G.enemies]) {
+    if (!o.alive || o.inWater || (o.kind === 'enemy' && (o.dead || o.state === 'spawn' || o.fade < 1))) continue;
+    const p = o.body.position; const d = Math.hypot(p.x - hpU.x, p.z - hpU.z); if (d > ROOT_R) continue;
+    U.tags.push({ o, at: Front.timeToReach(ROOT_R, d, ROOT_SCAN), done: false, i: i++ });
+  }
+  U.tags.sort((a, b) => a.at - b.at);
+  banner('ROOT ACCESS', 'EVERYTHING IS EDITABLE', 1.6);
   sfx.inhale();
 }
+function tagObj(U, o, n) {
+  const p = o.body.position, isE = o.kind === 'enemy', s = isE ? o.def.scale : 1;
+  const heavyAud = isE && o.type === 'auditor';
+  Powers.reticles.spawn(p, isE ? -0.05 * s : 0, isE ? 1.7 * s : Math.max(0.7, o.radius * 1.7), heavyAud ? new THREE.Color(2.6, 0.9, 1.6) : new THREE.Color(1.3, 0.85, 2.8));
+  if (isE) { setEnemyGlow(o, 0.8); glitchEnemy(o, 0.25); if (!heavyAud) num(_v2.set(p.x, p.y + 1.3 * s, p.z), 'TAGGED', 'psi', 0.6); }
+  else if (o.kind === 'prop') setGlow(o, 0.6);
+  voxelPuff(p.x, p.y, p.z, isE ? 6 : 3, 2, 2, 0.08, 0.4);
+  if (n % 2 === 0 || n < 6) sfx.tag(n);
+  // freeze it where it stands
+  o.vortex = { ang: Math.atan2(p.z - U.c.z, p.x - U.c.x), r: Math.hypot(p.x - U.c.x, p.z - U.c.z), x0: p.x, z0: p.z, y0: p.y,
+    lift: heavyAud ? 0 : (isE ? rand(1.4, 2.2) : rand(0.9, 1.8) + Math.min(0.8, 20 / o.mass)), heavy: heavyAud, seed: Math.random() * 10 };
+  o.thrown = false; o.antiGrav = 0;
+  if (!heavyAud) { o.body.collisionFilterGroup = GRP.HELD; o.body.collisionFilterMask = NO_HERO; }
+  o.body.wakeUp();
+  if (isE && !heavyAud) { cancelAttack(o); setRagdoll(o, true); o.state = 'gripped'; }
+  if (isE && heavyAud) { cancelAttack(o); o.stun = Math.max(o.stun || 0, 3.5); o.state = 'stunned'; o.stateT = 0; }
+  if (o.kind === 'grenade') o.byHero = true;
+  U.caught.push(o);
+}
 function updateUlt(rdt, dt) {
-  const U = G.ultState; if (!U) { hero.levitate += (0 - hero.levitate) * damp(4, rdt); return; }
+  const U = G.ultState; if (!U) { G.freeze = 0; hero.levitate += (0 - hero.levitate) * damp(4, rdt); return; }
   U.t += rdt;
   const hp = heroCenter();
   hero.levitate += (1 - hero.levitate) * damp(5, rdt);
-  if (U.phase === 'inhale') {
-    for (let i = 0; i < 6; i++) { const a = Math.random() * 6.28, r = rand(6, 14); FX.add.emit(hp.x + Math.cos(a) * r, rand(0.2, 3), hp.z + Math.sin(a) * r, -Math.cos(a) * r * 1.6, 0.5, -Math.sin(a) * r * 1.6, 0.6, 0.45, 1.7, 0.6, 0.35, 0.05, 0, 0); }
-    if (U.t > 0.7) {
-      U.phase = 'vortex'; U.t = 0; sfx.vortex();
-      // her own halo while the tide turns around her
-      Powers.halos.spawn(hp, 2.2, 4.6, 2.15, new THREE.Color(1.0, 0.65, 2.2), 0.8, { follow: hero.body.position, yOff: 1.4, hold: 0.85, pulse: 1 });
-      Powers.halos.spawn(hp, 0.7, 1.5, 2.15, new THREE.Color(1.8, 1.6, 2.6), 0.9, { follow: hero.body.position, yOff: 1.4, hold: 0.85, pulse: 1 });
-      G.bloomKick = 0.5;
-      const R = 18;
-      const cand = [...G.props, ...G.grenades, ...G.enemies];
-      let i = 0;
-      for (const o of cand) {
-        if (!o.alive || o.inWater || (o.kind === 'enemy' && (o.state === 'spawn' || o.fade < 1))) continue;
-        const p = o.body.position; const d = Math.hypot(p.x - hp.x, p.z - hp.z); if (d > R) continue;
-        const heavyAud = o.kind === 'enemy' && o.type === 'auditor';
-        o.vortex = { ang: Math.atan2(p.z - hp.z, p.x - hp.x), r: d, rT: heavyAud ? 5.5 : clamp(2.6 + Math.sqrt(o.mass) * 0.22 + (i % 3) * 0.5, 2.6, 7), y: 1.2 + (i % 4) * 0.7 + (o.kind === 'enemy' ? 0.5 : 0), w: rand(2.8, 3.8), heavy: heavyAud };
-        o.thrown = false; o.antiGrav = 0;
-        o.body.collisionFilterGroup = GRP.HELD; o.body.collisionFilterMask = NO_HERO; o.body.wakeUp();
-        if (o.kind === 'enemy' && !heavyAud) { cancelAttack(o); setRagdoll(o, true); o.state = 'gripped'; }
-        if (o.kind === 'grenade') o.byHero = true;
-        U.caught.push(o); i++;
-      }
-    }
-  } else if (U.phase === 'vortex') {
-    const k = Math.min(1, U.t / 0.6);
+  // tagged things hang in the air, twitching like a paused video
+  const hover = (k) => {
     for (const o of U.caught) {
       if (!o.alive || !o.vortex) continue;
       const V = o.vortex, b = o.body;
-      if (V.heavy) { // the Auditor resists: dragged, not lifted
-        const dx = hp.x - b.position.x, dz = hp.z - b.position.z; const d = Math.hypot(dx, dz);
-        if (d > 3) { b.velocity.x += (dx / d * 4 - b.velocity.x) * 0.1; b.velocity.z += (dz / d * 4 - b.velocity.z) * 0.1; }
-        continue;
-      }
-      V.ang += V.w * rdt * (0.6 + k * 0.6);
-      V.r += (V.rT - V.r) * damp(2.2, rdt);
-      const ty = V.y + U.t * 0.6;
-      const tx = hp.x + Math.cos(V.ang) * V.r, tz = hp.z + Math.sin(V.ang) * V.r;
-      const kk = 9, maxV = 34;
-      let vx = (tx - b.position.x) * kk, vy = (ty - b.position.y) * kk, vz = (tz - b.position.z) * kk;
-      const s = Math.hypot(vx, vy, vz); if (s > maxV) { vx *= maxV / s; vy *= maxV / s; vz *= maxV / s; }
-      b.velocity.x += (vx - b.velocity.x) * 0.3; b.velocity.y += (vy - b.velocity.y) * 0.3; b.velocity.z += (vz - b.velocity.z) * 0.3;
-      b.angularVelocity.x += rand(-0.6, 0.6); b.angularVelocity.z += rand(-0.6, 0.6);
-      if (o.kind === 'prop') setGlow(o, 0.14);
-      if (o.kind === 'enemy' && !o.dead) { setEnemyGlow(o, 0.5); o.tickAcc = (o.tickAcc || 0) + 9 * dt; if (o.tickAcc > 6) { damageEnemy(o, 6, null, 0, 'tick'); o.tickAcc = 0; } }
+      if (V.heavy) { b.velocity.x *= 0.8; b.velocity.z *= 0.8; continue; }
+      const jit = Math.random() < 0.08 ? 0.12 : 0;
+      const tx = V.x0 + Math.sin(G.rt * 1.3 + V.seed) * 0.15 * k + (Math.random() - 0.5) * jit;
+      const tz = V.z0 + Math.cos(G.rt * 1.1 + V.seed) * 0.15 * k + (Math.random() - 0.5) * jit;
+      const ty = Math.max(V.y0, (o.hh || 0.5) + 0.05) + V.lift * k + Math.sin(G.rt * 2 + V.seed) * 0.08 * k;
+      b.velocity.x = (tx - b.position.x) * 8; b.velocity.y = (ty - b.position.y) * 8; b.velocity.z = (tz - b.position.z) * 8;
+      b.angularVelocity.x *= 0.9; b.angularVelocity.y = 0.6 * k; b.angularVelocity.z *= 0.9;
     }
-    // swirl particles
-    for (let i = 0; i < 10; i++) {
-      const a = Math.random() * 6.28, r = rand(1.5, 7.5);
-      FX.add.emit(hp.x + Math.cos(a) * r, rand(0.3, 4.5), hp.z + Math.sin(a) * r, -Math.sin(a) * 9, rand(0.5, 2), Math.cos(a) * 9, 0.55, 0.4, 1.6, 0.5, 0.3, 0.05, 0, 0.5);
+  };
+  if (U.phase === 'inhale') {
+    // the scan front: lock onto everything it passes, erase incoming fire
+    for (const tg of U.tags) if (!tg.done && U.t >= tg.at) { tg.done = true; if (tg.o.alive && !tg.o.held) tagObj(U, tg.o, tg.i); }
+    const fr = Front.radiusAt(ROOT_R, U.t / ROOT_SCAN);
+    for (let i = G.bolts.length - 1; i >= 0; i--) {
+      const B = G.bolts[i];
+      if (Math.hypot(B.p.x - U.c.x, B.p.z - U.c.z) < fr) { voxelPuff(B.p.x, B.p.y, B.p.z, 6, 2, 2, 0.07, 0.5); scene.remove(B.m); G.bolts.splice(i, 1); }
     }
-    addTrauma(0.02);
-    if (Math.random() < 0.35 && U.caught.length) { const o = U.caught[Math.floor(Math.random() * U.caught.length)]; if (o.alive) arc(new THREE.Vector3(), 0.12, o.body.position, 0.06); }
-    G.bloomKick = Math.max(G.bloomKick, 0.35);
-    if (U.t > 2.1) {
+    for (let i = 0; i < 5; i++) { const a = Math.random() * 6.28; Powers.voxels.emit(U.c.x + Math.cos(a) * fr, 0.1, U.c.z + Math.sin(a) * fr, 0, rand(1.5, 4), 0, rand(0.08, 0.16), 0.6, 0.9, 0.5, 2.4, 2); }
+    hover(0);
+    if (U.t > ROOT_SCAN + 0.1) {
+      for (const tg of U.tags) if (!tg.done) { tg.done = true; if (tg.o.alive && !tg.o.held) tagObj(U, tg.o, tg.i); }
+      U.phase = 'vortex'; U.t = 0; sfx.vortex();
+      G.freeze = 0.65;
+      Powers.halos.spawn(hp, 2.2, 4.6, 1.7, new THREE.Color(1.0, 0.65, 2.2), 0.8, { follow: hero.body.position, yOff: 1.4, hold: 0.85, pulse: 1 });
+      Powers.halos.spawn(hp, 0.7, 1.5, 1.7, new THREE.Color(1.8, 1.6, 2.6), 0.9, { follow: hero.body.position, yOff: 1.4, hold: 0.85, pulse: 1 });
+      G.bloomKick = 0.5;
+    }
+  } else if (U.phase === 'vortex') {
+    const k = 1 - Math.pow(1 - Math.min(1, U.t / 0.5), 3);
+    hover(k);
+    for (const o of U.caught) {
+      if (!o.alive || !o.vortex) continue;
+      if (o.kind === 'prop') setGlow(o, 0.18 + Math.sin(G.rt * 14 + o.vortex.seed) * 0.06);
+      if (o.kind === 'enemy' && !o.dead) { setEnemyGlow(o, 0.5); if (Math.random() < 0.03) glitchEnemy(o, 0.12); o.tickAcc = (o.tickAcc || 0) + 9 * dt; if (o.tickAcc > 6) { damageEnemy(o, 6, null, 0, 'tick'); o.tickAcc = 0; } }
+      // data bleeding upward off everything she has tagged
+      if (Math.random() < 0.25) { const p = o.body.position; Powers.voxels.emit(p.x + rand(-0.3, 0.3), p.y + rand(-0.2, 0.4), p.z + rand(-0.3, 0.3), 0, rand(0.8, 2), 0, rand(0.05, 0.1), 0.7, 1.0, 0.55, 2.6, -1); }
+    }
+    addTrauma(0.015);
+    if (Math.random() < 0.3 && U.caught.length) { const o = U.caught[Math.floor(Math.random() * U.caught.length)]; if (o.alive) arc(new THREE.Vector3(), 0.12, o.body.position, 0.06); }
+    if (Math.random() < 0.04) G.glitch = Math.max(G.glitch, 0.35);
+    G.bloomKick = Math.max(G.bloomKick, 0.3);
+    if (U.t > 1.6) {
       U.phase = 'release'; U.t = 0;
-      sfx.release(); addTrauma(1); hitStop(0.09); screenFlash(0.18);
-      
+      sfx.release(); addTrauma(1); hitStop(0.09); screenFlash(0.08);
+      G.freeze = 0; G.glitch = 1.2;
       FX.flash(hp, 0x9b7bff, 110);
       const ch = new THREE.Vector3(hp.x, hp.y + 1.2, hp.z);
-      Powers.halos.spawn(ch, 1.5, 13, 0.85, new THREE.Color(1.1, 0.75, 2.4), 1.0, { hold: 0.06 });
-      Powers.halos.spawn(ch, 0.8, 5, 0.45, new THREE.Color(2.0, 1.8, 2.8), 1.2);
-      Powers.domes.spawn(hp, 1.0, 15, 0.8, new THREE.Color(0.7, 0.5, 1.4), 0.9);
-      eruption(hp, 2.0, { speed: 26, hold: 0.45, fissureLife: 2.2 });
+      Powers.halos.spawn(ch, 1.5, 13, 0.85, new THREE.Color(1.1, 0.75, 2.4), 0.75, { hold: 0.06 });
+      Powers.halos.spawn(ch, 0.8, 5, 0.45, new THREE.Color(2.0, 1.8, 2.8), 0.8);
+      Powers.grids.spawn(hp, 20, 0.5, 1.6, new THREE.Color(1.0, 0.55, 2.6), 0.6);
+      Powers.walls.spawn(hp, 19, 2.8, 0.75, new THREE.Color(0.9, 0.5, 2.4));
+      Powers.beams.spawn(hp, 1.2, 16, 0.5, new THREE.Color(1.2, 0.9, 2.4));
+      Powers.reticles.clear(true);
       Shock.fire(ch, 0.9, 0.95, 0.06);
-      G.bloomKick = 0.8; camState.punch = 1.4;
-      for (let i = 0; i < 240; i++) { const a = (i / 240) * Math.PI * 2, sp = rand(12, 22); FX.add.emit(hp.x + Math.cos(a) * 0.8, 0.08, hp.z + Math.sin(a) * 0.8, Math.cos(a) * sp, rand(2, 7), Math.sin(a) * sp, 0.62, 0.7, 0.95, rand(0.4, 0.8), rand(0.08, 0.16), 0.03, 16, 1, 0.9); }
+      G.bloomKick = 0.5; camState.punch = 1.4;
+      for (let i = 0; i < 220; i++) {
+        const a = (i / 220) * Math.PI * 2 + rand(-0.03, 0.03), sp = rand(12, 24), r = Math.random();
+        const c = r < 0.1 ? [2.0, 1.8, 2.8] : r < 0.7 ? [0.9, 0.48, 2.3] : [0.5, 0.28, 1.4];
+        Powers.voxels.emit(hp.x + Math.cos(a) * 1.4, rand(0.3, 2.6), hp.z + Math.sin(a) * 0.6, Math.cos(a) * sp, rand(1, 6), Math.sin(a) * sp, rand(0.1, 0.28), rand(0.6, 1.1), c[0], c[1], c[2], 7);
+      }
       for (const e of G.enemies) if (!e.dead) arc(new THREE.Vector3(), 0.4, e.body.position, 0.1);
-      for (let i = 0; i < 140; i++) { const a = Math.random() * 6.28, s = rand(10, 30); FX.add.emit(hp.x, rand(0.5, 3), hp.z, Math.cos(a) * s, rand(-1, 4), Math.sin(a) * s, 0.7, 0.5, 1.9, rand(0.4, 0.9), rand(0.3, 0.6), 0.05, 0, 2); }
       for (const o of U.caught) {
         if (!o.alive) continue;
         const b = o.body; const V = o.vortex; o.vortex = null;
         const dx = b.position.x - hp.x, dz = b.position.z - hp.z; const d = Math.hypot(dx, dz) || 1;
         const rx = dx / d, rz = dz / d;
-        if (V && V.heavy) { damageEnemy(o, 90, new THREE.Vector3(rx, 0, rz), 0, 'ult'); o.stun = 1.5; if (!o.dead) { o.state = 'stunned'; o.stateT = 0; } restoreGroup(o); continue; }
+        voxelPuff(b.position.x, b.position.y, b.position.z, o.kind === 'enemy' ? 12 : 5, 4, 4, 0.12, 0.6);
+        if (V && V.heavy) { damageEnemy(o, 90, new THREE.Vector3(rx, 0, rz), 0, 'ult'); glitchEnemy(o, 0.6); o.stun = 1.5; if (!o.dead) { o.state = 'stunned'; o.stateT = 0; } restoreGroup(o); continue; }
         const v = rand(26, 34) * (o.kind === 'enemy' ? 0.8 : clamp(1.2 - o.mass / 500, 0.55, 1.1));
-        b.velocity.set(rx * v - rz * 6, rand(1, 4), rz * v + rx * 6);
+        b.velocity.set(rx * v - rz * 4, rand(2, 5), rz * v + rx * 4);
+        b.angularVelocity.set(rand(-8, 8), rand(-8, 8), rand(-8, 8));
         o.thrown = true; o.thrownT = 0; o.antiGrav = 0.45; o.dropped = false;
-        if (o.kind === 'enemy') { o.state = 'ragdoll'; o.downT = 0; o.thrown = true; if (!o.dead) damageEnemy(o, 42, new THREE.Vector3(rx, 0, rz), 0, 'ult'); }
+        if (o.kind === 'enemy') { o.state = 'ragdoll'; o.downT = 0; o.thrown = true; glitchEnemy(o, 0.5); if (!o.dead) damageEnemy(o, 42, new THREE.Vector3(rx, 0, rz), 0, 'ult'); }
       }
     }
   } else if (U.phase === 'release') {
@@ -1291,7 +1347,7 @@ function updateWaves(dt) {
     ui.left.textContent = `${alive + G.waveQueue.length} CENSUS LEFT`;
     if (!G.waveQueue.length && alive === 0 && G.enemies.length === 0) {
       if (G.wave >= WAVES.length - 1) win();
-      else { G.mode = 'break'; breakT = 2.2; banner('CLEAR', 'BREATHE OUT.', 1.6); hero.hp = Math.min(hero.maxHp, hero.hp + 25); resupply(); }
+      else { G.mode = 'break'; breakT = 2.2; banner('CLEAR', 'COOLING DOWN', 1.6); hero.hp = Math.min(hero.maxHp, hero.hp + 25); resupply(); }
     }
   } else if (G.mode === 'break') {
     breakT -= dt;
@@ -1326,8 +1382,8 @@ function win() {
   const run = G.runId; setTimeout(() => { if (G.runId === run && G.mode === 'win') showEnd(true); }, 1800);
 }
 function showEnd(won) {
-  $('endtitle').textContent = won ? 'BLOCK CLEARED' : 'IRIS IS DOWN';
-  $('endquote').textContent = won ? '"Breathe out."' : '"Not like this. Not again."';
+  $('endtitle').textContent = won ? 'BLOCK CLEARED' : 'SIGNAL LOST';
+  $('endquote').textContent = won ? '"Count me out."' : '"Not like this. Not again."';
   const s = G.stats; const m = Math.floor(s.time / 60), sec = Math.floor(s.time % 60);
   $('endstats').innerHTML = [
     [s.kills, 'CENSUS DOWN'], [s.throws, 'THROWS'], [s.maxCombo, 'BEST COMBO'], [s.catches, 'GRENADES CAUGHT'], [s.blocks, 'SHOTS BLOCKED'], [`${m}:${String(sec).padStart(2, '0')}`, 'TIME'],
@@ -1340,6 +1396,8 @@ function resetGame() {
   for (const g of [...G.grenades]) removeGrenade(g);
   for (const B of G.bolts) scene.remove(B.m); G.bolts.length = 0;
   G.holds.clear(); input.pointers.clear();
+  for (const b of Powers.brackets.list) { b.obj = null; b.out = 0; b.m.visible = false; }
+  Powers.reticles.clear(); G.freeze = 0; G.glitch = 0; G.surge = null;
   resetProps();
   hero.hp = hero.maxHp; hero.focus = hero.maxFocus; hero.dead = false; hero.levitate = 0; hero.invuln = 0;
   hero.body.position.set(0, 0.85, 12); hero.body.velocity.set(0, 0, 0);
@@ -1391,7 +1449,7 @@ function updateCamera(rdt) {
 }
 
 // ======================= UI =======================
-const COMBO_NAMES = [[10, 'TSUNAMI'], [7, 'RIPTIDE'], [4, 'BREAKER'], [2, 'SWELL']];
+const COMBO_NAMES = [[10, 'KERNEL PANIC'], [7, 'OVERFLOW'], [4, 'CASCADE'], [2, 'PING']];
 const shieldEls = [...document.querySelectorAll('#shields .sh')].map(el => ({ el, label: el.querySelector('span'), fill: el.querySelector('i'), on: false }));
 const _sb = new THREE.Vector3();
 function updateShieldBars() {
@@ -1525,7 +1583,7 @@ function frame(now) {
 
   try { stepGame(dt, rdt); } catch (err) { reportError(err); }
   try { renderFrame(dt, rdt); } catch (err) { reportError(err); }
-  try { G.bloomKick = Math.max(0, (G.bloomKick || 0) - rdt * 2.2); bloom.strength = 0.7 + G.bloomKick; Shock.update(rdt, grade.uniforms, camera, G.W, G.H); grade.uniforms.uTime.value = G.rt % 100; wet.render(renderer, scene, camera); composer.render(); } catch (err) { reportError(err); }
+  try { G.bloomKick = Math.max(0, (G.bloomKick || 0) - rdt * 2.2); bloom.strength = 0.7 + G.bloomKick; Shock.update(rdt, grade.uniforms, camera, G.W, G.H); grade.uniforms.uTime.value = G.rt % 100; G.glitch = Math.max(0, (G.glitch || 0) - rdt * 2.4); grade.uniforms.uGlitch.value = Math.min(1, G.glitch); G.freeze = G.freeze || 0; G.freezeV = (G.freezeV || 0) + (G.freeze - (G.freezeV || 0)) * Math.min(1, rdt * 9); grade.uniforms.uFreeze.value = G.freezeV; wet.render(renderer, scene, camera); composer.render(); } catch (err) { reportError(err); }
   const _t2 = performance.now();
   PERF.js = PERF.js * 0.9 + (_t2 - _t0) * 0.1; PERF.rdt = rdt;
 }
@@ -1572,7 +1630,7 @@ function stepGame(dt, rdt) {
 function renderFrame(dt, rdt) {
   for (const e of G.enemies) updateEnemyVisual(e, rdt, camera);
   updateHeroVisual(hero, rdt, [...G.holds.values()]);
-  // tethers run from Iris's mind (her brow) to whatever she holds
+  // tethers run from Null's mind (her brow) to whatever she holds
   const holds = [...G.holds.values()];
   for (let i = 0; i < tethers.length; i++) {
     const h = holds[i];
@@ -1589,7 +1647,7 @@ function renderFrame(dt, rdt) {
     if (!o.held && Math.hypot(p.x - hp.x, p.z - hp.z) < TUNE.GRAB_RANGE) FX.add.emit(p.x + rand(-0.3, 0.3), p.y + o.hh, p.z + rand(-0.3, 0.3), 0, rand(0.5, 1.2), 0, 0.5, 0.35, 1.3, 0.9, 0.16, 0.02, 0, 0, 0.7);
   }
   FX.update(dt > 0 ? dt : rdt * 0.2);
-  Powers.update(dt > 0 ? dt : rdt * 0.2);
+  Powers.update(G.ultState ? rdt : (dt > 0 ? dt : rdt * 0.2));   // she acts outside frozen time
   updateArcs(rdt);
   updateCamera(rdt);
   FX.numbers.update(rdt, camera);

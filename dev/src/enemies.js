@@ -121,6 +121,16 @@ const _e = new THREE.Euler();
 export function updateEnemyVisual(e, dt) {
   const b = e.body, B = e.bones, s = e.def.scale;
   e.root.position.set(b.position.x, b.position.y, b.position.z);
+  // glitch: the body stutters sideways and drops frames, like corrupted video
+  if (e.glitchT > 0) {
+    e.glitchT -= dt;
+    if (e.glitchT <= 0) e.root.visible = true;
+    else {
+      const q = Math.floor(G.rt * 30);
+      if (q !== e._gq) { e._gq = q; e._gx = (Math.random() - 0.5) * 0.34; e._gz = (Math.random() - 0.5) * 0.34; e._gv = Math.random() > 0.2; }
+      e.root.position.x += e._gx; e.root.position.z += e._gz; e.root.visible = e._gv;
+    }
+  }
   if (b.fixedRotation) { _q.setFromAxisAngle(_up, e.yaw); e.root.quaternion.slerp(_q, damp(12, dt)); }
   else e.root.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
   const limp = e.state === 'gripped' || e.state === 'ragdoll' || e.state === 'getup';
