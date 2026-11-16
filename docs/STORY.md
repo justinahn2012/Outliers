@@ -169,6 +169,24 @@ Dry and clipped, with an adjuster's deadpan. She prices everything and never giv
 3. **REM is her** *(Level 8)*. The voice in her head is the evicted Iris, reassembled.
    - *Foreshadowing:* REM quotes tattoos before she reads them; catchphrases she loses in an overheat migrate into REM's mouth; REM never runs hot; REM hums her mother's tune, stuck C# and all; `IF REM ASKS WHAT YOU REMEMBER, LIE.`
 
+
+### The deepest layer: the game is her memory
+
+**Every level you play is Iris remembering it, and every replay rewrites it.** That's how real memory works: recalling a memory re-saves it, a little changed. The player isn't watching her past; the player is editing it.
+
+**Who presses play: REM.** It replays her memories to keep them from being evicted, and it's steering each replay toward the night she erased herself, so it can become the one who remembers. The final reveal: Level 9's last moment drops the HUD, the fps counter and the rain. Dry streets, flat daylight, Iris in a chair. It's the first thing in the game that isn't remembered.
+
+**Clues already in the build:**
+- The end-screen button says **AGAIN**, and the lose line is *"Not like this. Not again."* She has lived this before.
+- The rain never ripples the harbour, and it's raining in every level. `RAIN = SAFE`: she adds rain to every memory. In the real city, it isn't raining.
+- Props and enemies sit in slightly different places on each retry. A memory never replays the same way twice.
+- REM speaks in the error line beside the fps counter.
+
+**How it plays:**
+- **Memory decay.** Levels you don't replay start to degrade: textures blur, props vanish, faces stop rendering, colour drains. Replaying a level keeps it warm. Let one go long enough and it's evicted from level select for good, along with its tattoo.
+- **Reconsolidation.** Choices in a replay overwrite the original: who you spared, what you shielded, the number you gave in Count the Room. Late game, cutscenes reflect *your* version, not the true one, and the tattoos start disagreeing with what you remember playing.
+- **Two players.** In the final act, the HUD reveals there were always two cursors: Iris's and REM's. The tether you've been drawing from her brow was REM's hand all along.
+
 ---
 
 ## 8. Endings & Sequel Hook
