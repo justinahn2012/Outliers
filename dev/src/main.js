@@ -512,6 +512,7 @@ function throwObj(o, x, y, vx, vy, sp) {
     FX.rings.spawn(tp.x, 0.08, tp.z, 1.6, 0.7, 0.35, 0xff5a8a, 0.9, tp);
   } else d3.set(dir.x, -0.03, dir.z).normalize();
   b.velocity.set(d3.x * v, d3.y * v, d3.z * v);
+  if (o === (G.holds.size ? null : o)) hero.flourish = { t: 0, dir: new THREE.Vector3(d3.x, 0, d3.z).normalize() };
   const spin = o.kind === 'enemy' ? 6 : lerp(13, 2, clamp(o.mass / 300, 0, 1));
   b.angularVelocity.set(d3.z * spin + rand(-1, 1), rand(-2, 2), -d3.x * spin + rand(-1, 1));
   o.thrown = true; o.thrownT = 0; o.antiGrav = antiG; o.dropped = false;
@@ -1566,13 +1567,12 @@ function stepGame(dt, rdt) {
 function renderFrame(dt, rdt) {
   for (const e of G.enemies) updateEnemyVisual(e, rdt, camera);
   updateHeroVisual(hero, rdt, [...G.holds.values()]);
-  // tethers from Iris's hands to whatever she holds
+  // tethers run from Iris's mind (her brow) to whatever she holds
   const holds = [...G.holds.values()];
   for (let i = 0; i < tethers.length; i++) {
     const h = holds[i];
     if (h) {
-      const hand = holds.length === 1 || i === 0 ? hero.bones.rH : hero.bones.lH;
-      (hand || hero.root).getWorldPosition(_v1);
+      if (hero.browPos) _v1.copy(hero.browPos); else hero.root.getWorldPosition(_v1);
       const p = h.obj.body.position; _v2.set(p.x, p.y, p.z);
       tethers[i].set(_v1, _v2, camera.position, G.rt, 1, 0.12 + Math.min(0.12, h.obj.mass / 1500), 0.6 + Math.sin(G.rt * 3) * 0.2);
     } else tethers[i].set(_v1, _v1, camera.position, G.rt, 0, 0, 0);

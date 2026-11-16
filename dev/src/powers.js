@@ -21,9 +21,12 @@ function haloTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+let _haloTex = null;
+export function sharedHaloTexture() { return _haloTex || (_haloTex = haloTexture()); }
+
 export class Halos {
   constructor(scene, n = 10) {
-    const tex = haloTexture();
+    const tex = sharedHaloTexture();
     this.list = [];
     for (let i = 0; i < n; i++) {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
