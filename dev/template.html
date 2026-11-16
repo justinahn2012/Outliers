@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#06070c">
+<title>OUTLIERS: Undertow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+<style>
+:root { --psi:#9b7bff; --psi2:#c9b8ff; --hp:#e9f1ff; --ink:#f3f1ff; --dim:#8b8aa6;
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px); }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin:0; height:100%; background:#06070c; overflow:hidden; color:var(--ink); font-family: Inter, system-ui, -apple-system, sans-serif;
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; overscroll-behavior:none; }
+canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+#hud { position:fixed; inset:0; pointer-events:none; }
+#vignette { position:absolute; inset:0; background: radial-gradient(ellipse at 50% 55%, rgba(0,0,0,0) 55%, rgba(2,2,10,0.55) 100%); }
+#hurt { position:absolute; inset:0; background: radial-gradient(ellipse at center, rgba(255,0,40,0) 40%, rgba(255,20,60,0.55) 100%); opacity:0; }
+#flash { position:absolute; inset:0; background:#d8ccff; opacity:0; mix-blend-mode:screen; }
+#ultveil { position:absolute; inset:0; background: radial-gradient(circle at 50% 55%, rgba(120,80,255,0) 25%, rgba(40,10,120,0.55) 100%); opacity:0; }
+#top { position:absolute; left:0; right:0; top:0; padding: calc(var(--sat) + 10px) calc(var(--sar) + 12px) 0 calc(var(--sal) + 12px); display:flex; align-items:flex-start; gap:10px; }
+#vitals { flex:0 1 230px; }
+.nameplate { font-family:'Bebas Neue', Impact, sans-serif; font-size:20px; letter-spacing:2.5px; line-height:1; color:#fff; text-shadow:0 0 12px rgba(155,123,255,0.9); display:flex; align-items:center; gap:7px; }
+.nameplate small { font-family:Inter, sans-serif; font-size:9px; letter-spacing:1.6px; color:var(--dim); font-weight:800; }
+.bar { height:9px; margin-top:6px; background:rgba(10,10,20,0.65); border:1px solid rgba(255,255,255,0.18); border-radius:5px; overflow:hidden; position:relative; }
+.bar i { position:absolute; left:0; top:0; bottom:0; width:100%; border-radius:4px; transform-origin:left; }
+.bar.hp i { background: linear-gradient(90deg, #cfe3ff, #ffffff); box-shadow:0 0 10px rgba(200,225,255,0.7); }
+.bar.focus { height:7px; }
+.bar.focus i { background: linear-gradient(90deg, #6d4dff, #c3a8ff); box-shadow:0 0 12px rgba(155,123,255,0.9); }
+.bar.focus.low i { background: linear-gradient(90deg, #ff4d7a, #ff9db4); }
+#waveinfo { margin-left:auto; text-align:right; font-family:'Bebas Neue', Impact, sans-serif; }
+#wavelabel { font-size:20px; letter-spacing:2px; line-height:1; }
+#enemyleft { font-family:Inter, sans-serif; font-size:10px; font-weight:800; letter-spacing:1.5px; color:var(--dim); margin-top:3px; }
+#pausebtn { pointer-events:auto; width:38px; height:38px; border-radius:50%; border:1px solid rgba(255,255,255,0.25); background:rgba(10,10,20,0.5); color:#fff; font-weight:900; font-size:13px; letter-spacing:1px; }
+#combo { position:absolute; right: calc(var(--sar) + 16px); top: calc(var(--sat) + 74px); text-align:right; opacity:0; transition: opacity .2s; }
+#combo b { display:block; font-family:'Bebas Neue', Impact; font-size:46px; line-height:0.9; color:#fff; text-shadow: 0 0 18px rgba(155,123,255,1); }
+#combo span { font-family:'Bebas Neue', Impact; font-size:18px; letter-spacing:3px; color:var(--psi2); }
+#btns { position:absolute; right: calc(var(--sar) + 16px); bottom: calc(var(--sab) + 18px); display:flex; flex-direction:column; align-items:center; gap:14px; }
+#btns button { pointer-events:auto; border-radius:50%; border:none; color:#fff; font-family:'Bebas Neue', Impact; letter-spacing:1.5px; position:relative; touch-action:none; }
+#surgebtn { width:64px; height:64px; background: radial-gradient(circle at 50% 40%, rgba(130,100,255,0.55), rgba(20,14,50,0.75)); border:1.5px solid rgba(190,170,255,0.6) !important; font-size:16px; }
+#surgebtn.cd { opacity:0.45; }
+#ultbtn { width:84px; height:84px; background: rgba(12,8,30,0.7); font-size:15px; }
+#ultbtn svg { position:absolute; inset:0; width:100%; height:100%; transform: rotate(-90deg); }
+#ultbtn .lbl { position:relative; z-index:1; line-height:1; }
+#ultbtn.ready { animation: pulse 0.9s infinite; background: radial-gradient(circle, rgba(160,120,255,0.9), rgba(60,20,160,0.9)); }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 10px rgba(160,120,255,0.6);} 50% { box-shadow: 0 0 34px rgba(190,160,255,1);} }
+#joy { position:absolute; left:0; top:0; width:0; height:0; display:none; }
+#joy::before { content:''; position:absolute; left:-62px; top:-62px; width:124px; height:124px; border-radius:50%; border:1.5px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.04); }
+#knob { position:absolute; left:-24px; top:-24px; width:48px; height:48px; border-radius:50%; background: rgba(200,190,255,0.35); border:1.5px solid rgba(255,255,255,0.6); }
+#hint { position:absolute; left:50%; bottom: calc(var(--sab) + 205px); transform:translateX(-50%); width: min(86vw, 420px); text-align:center; font-weight:800; font-size:15px; letter-spacing:0.3px;
+  text-shadow: 0 2px 10px #000, 0 0 2px #000; opacity:0; transition: opacity .35s; line-height:1.35; }
+#hint small { display:block; font-weight:600; font-size:12px; color:#c8c4e6; margin-top:4px; }
+#banner { position:absolute; left:0; right:0; top:34%; text-align:center; font-family:'Bebas Neue', Impact; font-size: clamp(40px, 12vw, 84px); letter-spacing:4px; color:#fff;
+  text-shadow: 0 0 30px rgba(155,123,255,1), 0 0 4px #000; opacity:0; transform: scale(1.1); transition: opacity .3s, transform .5s; }
+#banner small { display:block; font-family:Inter, sans-serif; font-size:13px; font-weight:800; letter-spacing:3px; color:var(--psi2); margin-top:4px; }
+#banner.show { opacity:1; transform: scale(1); }
+#nums { position:absolute; inset:0; overflow:hidden; }
+.sh { position:absolute; left:0; top:0; display:none; transform-origin:center; will-change:transform; text-align:center; width:84px; }
+.sh span { display:block; font-family:'Bebas Neue', Impact; font-size:12px; letter-spacing:1.5px; color:#e6e0ff; text-shadow:0 0 6px #000, 0 0 2px #000; margin-bottom:2px; }
+.sh b { display:block; height:6px; border-radius:3px; background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.35); overflow:hidden; }
+.sh i { display:block; height:100%; width:100%; transform-origin:left; background:#8dffb8; box-shadow:0 0 8px rgba(140,255,190,0.8); }
+.num { position:absolute; left:0; top:0; font-family:'Bebas Neue', Impact; font-size:24px; color:#fff; text-shadow: 0 0 8px rgba(0,0,0,0.9), 0 0 2px #000; white-space:nowrap; will-change:transform; display:none; }
+.num.big { color:#ffe3a0; font-size:32px; text-shadow: 0 0 14px rgba(255,160,60,0.9), 0 0 2px #000; }
+.num.psi { color:#d8c8ff; text-shadow: 0 0 12px rgba(155,123,255,1), 0 0 2px #000; font-size:20px; letter-spacing:1.5px; }
+.num.hurt { color:#ff5b70; }
+.screen { position:fixed; inset:0; display:flex; align-items:center; justify-content:flex-start; flex-direction:column; overflow-y:auto; padding: calc(var(--sat) + 20px) 22px calc(var(--sab) + 20px); text-align:center; }
+.screen.hidden { display:none; }
+.screen > :first-child { margin-top:auto; } .screen > :last-child { margin-bottom:auto; }
+#title > :last-child { margin-bottom:0; }
+#title { background: linear-gradient(180deg, rgba(4,4,10,0.25) 0%, rgba(4,4,10,0.55) 45%, rgba(4,4,12,0.92) 100%); }
+.series { font-weight:900; font-size:12px; letter-spacing:8px; color:var(--psi2); margin-bottom:-6px; text-shadow:0 0 10px rgba(155,123,255,0.8); }
+.logo { font-family:'Bebas Neue', Impact; font-size: clamp(64px, 22vw, 132px); line-height:0.92; letter-spacing:6px; color:#fff;
+  text-shadow: 0 0 22px rgba(155,123,255,0.95), 0 0 60px rgba(110,70,255,0.6), 3px 0 0 rgba(255,40,140,0.35), -3px 0 0 rgba(30,220,255,0.35); }
+.tag { font-family:'Bebas Neue', Impact; font-size:20px; letter-spacing:5px; color:#d8ccff; margin-top:2px; }
+.card { max-width: 430px; margin: 14px auto 0; font-size:13.5px; line-height:1.5; color:#d9d6ef; }
+.card b { color:#fff; }
+.controls { max-width:430px; margin: 14px auto 0; display:grid; grid-template-columns: auto 1fr; gap: 6px 12px; text-align:left; font-size:12.5px; color:#cfcbe8; }
+.controls span:nth-child(odd) { font-family:'Bebas Neue', Impact; letter-spacing:1.5px; color:#fff; font-size:15px; }
+.go { pointer-events:auto; margin-top:18px; padding: 15px 34px; border-radius:40px; border: 1.5px solid rgba(200,185,255,0.9); background: linear-gradient(180deg, rgba(140,105,255,0.9), rgba(70,40,190,0.9));
+  color:#fff; font-family:'Bebas Neue', Impact; font-size:24px; letter-spacing:4px; box-shadow: 0 0 30px rgba(140,105,255,0.7); }
+.ghost { pointer-events:auto; margin-top:12px; padding: 10px 22px; border-radius:30px; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.06); color:#ddd; font-weight:800; letter-spacing:1px; font-size:13px; }
+#pause, #end { background: rgba(4,4,12,0.78); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+#end h1, #pause h1 { font-family:'Bebas Neue', Impact; font-size: clamp(48px, 15vw, 84px); letter-spacing:4px; margin:0; color:#fff; text-shadow: 0 0 26px rgba(155,123,255,0.9); }
+#end .quote { font-style:italic; color:#cdc6f0; margin: 6px 0 16px; font-size:14px; }
+.stats { display:grid; grid-template-columns: 1fr 1fr; gap:10px; max-width:360px; width:100%; }
+.stats div { background: rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:10px; }
+.stats b { display:block; font-family:'Bebas Neue', Impact; font-size:30px; color:#fff; line-height:1; }
+.stats span { font-size:10px; letter-spacing:1.5px; font-weight:800; color:var(--dim); }
+@media (max-height: 560px) {
+  .logo { font-size: 72px; } .card { font-size:12px; margin-top:8px; max-width:560px; } .controls { grid-template-columns: auto 1fr auto 1fr; max-width:760px; font-size:11.5px; margin-top:8px; }
+  .go { margin-top:10px; padding: 11px 28px; font-size:20px; }
+  #end h1, #pause h1 { font-size: 46px; } .stats { grid-template-columns: repeat(3, 1fr); max-width:560px; } .stats b { font-size:24px; } #end .quote { margin: 2px 0 10px; }
+  #hint { bottom: calc(var(--sab) + 70px); }
+}
+#fps { position:absolute; left: calc(var(--sal) + 10px); bottom: calc(var(--sab) + 6px); font-size:10px; color:rgba(255,255,255,0.35); font-weight:700; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="vignette"></div><div id="ultveil"></div><div id="hurt"></div><div id="flash"></div>
+  <div id="nums"></div>
+  <div id="shields"><div class="sh"><span></span><b><i></i></b></div><div class="sh"><span></span><b><i></i></b></div></div>
+  <div id="top" style="display:none">
+    <div id="vitals">
+      <div class="nameplate">UNDERTOW <small>IRIS CALLOWAY</small></div>
+      <div class="bar hp"><i id="hpfill"></i></div>
+      <div class="bar focus" id="focusbar"><i id="focusfill"></i></div>
+    </div>
+    <div id="waveinfo"><div id="wavelabel">WAVE 1</div><div id="enemyleft"></div></div>
+    <button id="pausebtn" aria-label="Pause">II</button>
+  </div>
+  <div id="combo"><b id="combonum">x2</b><span id="comboname">SWELL</span></div>
+  <div id="btns" style="display:none">
+    <button id="surgebtn"><span>SURGE</span></button>
+    <button id="ultbtn"><svg viewBox="0 0 84 84"><circle cx="42" cy="42" r="38" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="5"/><circle id="ultring" cx="42" cy="42" r="38" fill="none" stroke="#b39bff" stroke-width="5" stroke-linecap="round" stroke-dasharray="238.8" stroke-dashoffset="238.8"/></svg><span class="lbl">UNDER<br>TOW</span></button>
+  </div>
+  <div id="joy"><div id="knob"></div></div>
+  <div id="hint"></div>
+  <div id="banner"></div>
+  <div id="fps"></div>
+</div>
+
+<div id="title" class="screen">
+  <div class="series">OUTLIERS</div>
+  <div class="logo">UNDERTOW</div>
+  <div class="tag">HOLD YOUR BREATH.</div>
+  <div class="card"><b>Iris Calloway</b> drowned for four minutes under the Pier 9 collapse. She came back with the tide in her head. Now everything she touches with her mind gets pulled in, then thrown back hard.<br><span style="color:#a9a3cf">Push too hard and the tide takes a memory. She inks the names she can't lose on her arms.</span></div>
+  <div class="controls">
+    <span>DRAG</span><span>Drag empty space to move</span>
+    <span>TOUCH</span><span>Touch any object or soldier to lift it with your mind</span>
+    <span>FLICK</span><span>Flick it at the Census, or swing it through them while you hold it</span>
+    <span>SHIELD</span><span>Hold anything between you and their guns. Light junk shreds fast; a car or a concrete barrier soaks up a lot.</span>
+    <span>CATCH</span><span>Grab live grenades out of the air and send them back</span>
+  </div>
+  <button class="go" id="startbtn">HOLD YOUR BREATH</button>
+  <div style="height:8px"></div>
+</div>
+
+<div id="pause" class="screen hidden">
+  <h1>PAUSED</h1>
+  <button class="go" id="resumebtn">RESUME</button>
+  <button class="ghost" id="restartbtn">RESTART</button>
+  <button class="ghost" id="mutebtn">SOUND: ON</button>
+</div>
+
+<div id="end" class="screen hidden">
+  <h1 id="endtitle">BLOCK CLEARED</h1>
+  <div class="quote" id="endquote">"Breathe out."</div>
+  <div class="stats" id="endstats"></div>
+  <button class="go" id="againbtn">AGAIN</button>
+</div>
+<script>/*BUNDLE*/</script>
+</body>
+</html>

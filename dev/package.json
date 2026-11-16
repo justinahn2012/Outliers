@@ -1,0 +1,6 @@
+{
+  "name": "outliers-undertow",
+  "private": true,
+  "scripts": { "build": "node build.js", "pack": "python3 pack.py" },
+  "dependencies": { "cannon-es": "^0.20.0", "esbuild": "^0.25.0", "three": "^0.187.0" }
+}

@@ -1,0 +1,22 @@
+# OUTLIERS: Undertow
+
+Touch-first telekinesis brawler. Iris Calloway ("Undertow") lifts, swings, flicks and shields with anything on a rain-soaked Port Halcyon street while the Census hunts her.
+
+**Play:** open `index.html` (it loads `pack1.js`–`pack3.js` from the same folder). Deploys as-is on Cloudflare Pages / GitHub Pages from the repo root.
+
+## Layout
+- `index.html`, `pack1.js`, `pack2.js`, `pack3.js` — the playable build (everything flat at the root)
+- `dev/` — source (`src/`), HTML template, build scripts and raw assets (`assets_src/`)
+
+## Rebuild
+```
+cd dev && npm install
+node build.js        # src/ -> ../index.html
+python3 pack.py      # assets_src/ -> ../pack1.js..pack3.js (only when assets change)
+```
+
+## Asset credits
+- Props, street/brick textures, night HDRI: Poly Haven (CC0)
+- Iris and Census troopers + motion capture: Microsoft Rocketbox Avatar Library (MIT)
+- Auditor heavy armour: Mixamo "Vanguard" (via three.js examples; Adobe Mixamo terms)
+- Engine: three.js (MIT), cannon-es (MIT)
