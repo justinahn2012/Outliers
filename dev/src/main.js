@@ -16,7 +16,7 @@ import { createHero, updateHeroVisual } from './hero.js';
 import { spawnEnemy, removeEnemy, updateEnemyVisual, setRagdoll, setEnemyGlow, ETYPES } from './enemies.js';
 import { initInput, moveVector, input } from './input.js';
 import { loadAssets, A } from './assets.js';
-import { Powers, Shock } from './powers.js';
+import { Powers, Shock, TideWaves } from './powers.js';
 
 // ======================= renderer / scene =======================
 const canvas = document.getElementById('c');
@@ -1079,13 +1079,17 @@ function surgeRelease(S) {
   sfx.surge(); addTrauma(0.65); hitStop(0.06); screenFlash(0.04);
   G.bloomKick = 0.6; camState.punch = 1; hero.surgePose = 1;
   // the lamp-style halo, in her violet
-  Powers.halos.spawn(chest, 0.8, 6.5, 0.45, new THREE.Color(1.1, 0.75, 2.4), 0.9, { hold: 0.05 });
-  Powers.halos.spawn(chest, 0.4, 2.4, 0.26, new THREE.Color(2.0, 1.8, 2.8), 1.1);
+  Powers.halos.spawn(chest, 0.8, 5.5, 0.4, new THREE.Color(1.0, 0.65, 2.2), 0.65, { hold: 0.04 });
+  Powers.halos.spawn(chest, 0.4, 2.0, 0.22, new THREE.Color(1.8, 1.6, 2.6), 0.8);
   Powers.halos.spawn(chest, 2.0, 4.0, 1.0, new THREE.Color(0.8, 0.5, 1.8), 0.5, { follow: hero.body.position, yOff: 0.45 });
   Shock.fire(chest, 0.55, 0.5, 0.035);
   FX.flash(hp, 0xa58cff, 70);
-  const speed = 17;
-  const R = eruption(hp, 1, { speed });
+  const R = 7.2, waveLife = 0.85;
+  Powers.tides.spawn(hp, R, 2.2, waveLife, 1.3);
+  Powers.fissures.spawn(hp, R * 1.05, 1.3, new THREE.Color(0.6, 0.45, 1.4));
+  Powers.beams.spawn(hp, 0.8, 10, 0.4, new THREE.Color(1.0, 0.8, 2.2));
+  Powers.shocks.spawn(hp, R * 1.05, waveLife * 0.8, new THREE.Color(0.55, 0.6, 1.3), 0.45);
+  const hitAt = (d) => TideWaves.timeToReach(R, d, waveLife);
   // spray kicked up by the wave front
   for (let i = 0; i < 120; i++) {
     const a = (i / 120) * Math.PI * 2 + rand(-0.03, 0.03), sp = rand(10, 16);
@@ -1098,7 +1102,7 @@ function surgeRelease(S) {
     const ep = e.body.position; const d = Math.hypot(ep.x - hp.x, ep.z - hp.z); if (d > R + 0.4) continue;
     const dir = new THREE.Vector3(ep.x - hp.x, 0, ep.z - hp.z).normalize();
     const f = 1 - Math.min(1, d / R);
-    S.hits.push({ at: d / speed, done: false, fn: () => {
+    S.hits.push({ at: hitAt(d), done: false, fn: () => {
       if (e.dead || !e.alive) return;
       arc(new THREE.Vector3(ep.x, ep.y, ep.z), 0.3, ep, 0.09);
       FX.sparks(_v2.set(ep.x, ep.y + 0.3, ep.z), 16, 7, [0.85, 0.65, 1.0]);
@@ -1107,7 +1111,8 @@ function surgeRelease(S) {
       if (e.type === 'auditor') { damageEnemy(e, 22, dir, 0, 'surge'); e.body.velocity.x += dir.x * 4; e.body.velocity.z += dir.z * 4; e.body.velocity.y += 3; return; }
       damageEnemy(e, Math.round(14 + 14 * f), dir, 0, 'surge');
       if (e.dead || e.state !== 'ragdoll') { setRagdoll(e, true); e.state = 'ragdoll'; e.downT = 0; cancelAttack(e); }
-      e.body.velocity.set(dir.x * (5 + 5 * f), 9 + 5 * f, dir.z * (5 + 5 * f));
+      e.body.velocity.set(dir.x * (9 + 5 * f), 5 + 4 * f, dir.z * (9 + 5 * f));
+      for (let k = 0; k < 18; k++) FX.add.emit(ep.x, ep.y, ep.z, dir.x * rand(2, 7) + rand(-1.5, 1.5), rand(1.5, 5), dir.z * rand(2, 7) + rand(-1.5, 1.5), 0.62, 0.72, 1.0, rand(0.35, 0.7), rand(0.07, 0.13), 0.02, 16, 0.8, 0.9);
       e.body.angularVelocity.set(dir.z * 7 + rand(-3, 3), rand(-4, 4), -dir.x * 7 + rand(-3, 3));
       e.thrown = true; e.thrownT = 0;
     } });
@@ -1116,7 +1121,7 @@ function surgeRelease(S) {
     if (o.held) continue;
     const op = o.body.position; const d = Math.hypot(op.x - hp.x, op.z - hp.z); if (d > R) continue;
     const f = 1 - d / R;
-    S.hits.push({ at: d / speed, done: false, fn: () => {
+    S.hits.push({ at: hitAt(d), done: false, fn: () => {
       if (!o.alive) return;
       const k = 16 * f * clamp(45 / o.mass, 0.15, 1.2);
       _v1.set(op.x - hp.x, 0, op.z - hp.z).normalize();

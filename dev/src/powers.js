@@ -171,14 +171,14 @@ export const Shock = {
 const _v = new THREE.Vector3();
 
 export const Powers = {
-  halos: null, domes: null, shocks: null, spikes: null, fissures: null, beams: null, walls: null,
+  halos: null, domes: null, shocks: null, spikes: null, fissures: null, beams: null, walls: null, tides: null,
   init(scene) {
     this.halos = new Halos(scene, 12); this.domes = new Domes(scene, 3); this.shocks = new ShockRings(scene, 5);
-    this.spikes = new Spikes(scene, 220); this.fissures = new Fissures(scene, 3); this.beams = new Beams(scene, 2); this.walls = new WaveWalls(scene, 2);
+    this.spikes = new Spikes(scene, 220); this.fissures = new Fissures(scene, 3); this.beams = new Beams(scene, 2); this.walls = new WaveWalls(scene, 2); this.tides = new TideWaves(scene, 2);
   },
   update(dt) {
     this.halos.update(dt); this.domes.update(dt); this.shocks.update(dt);
-    this.spikes.update(dt); this.fissures.update(dt); this.beams.update(dt); this.walls.update(dt);
+    this.spikes.update(dt); this.fissures.update(dt); this.beams.update(dt); this.walls.update(dt); this.tides.update(dt);
   },
 };
 
@@ -418,6 +418,109 @@ export class WaveWalls {
       const r = 0.6 + (w.R - 0.6) * (1 - Math.pow(1 - age, 2));
       w.m.scale.set(r, w.H * (1 - age * 0.7) * Math.min(1, age * 8), r);
       w.m.material.uniforms.uA.value = 1.6 * (1 - age); w.m.material.uniforms.uT.value = G.rt;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tide wave: a ring-shaped breaking wave that erupts around the caster and rolls outward.
+// Geometry = a curling wave profile swept around a circle; radius/height animate in the shader.
+// ---------------------------------------------------------------------------
+export class TideWaves {
+  constructor(scene, n = 2) {
+    // cross-section of a breaking wave (x = offset from ring radius, outward +; y = height 0..1)
+    const prof = [[-1.0, 0.0], [-0.75, 0.12], [-0.5, 0.32], [-0.25, 0.6], [-0.05, 0.86], [0.1, 0.98], [0.24, 1.0], [0.36, 0.93], [0.42, 0.8], [0.38, 0.66], [0.3, 0.6], [0.42, 0.42], [0.58, 0.2], [0.72, 0.0]];
+    const SEG = 120, P = prof.length;
+    const ang = [], px = [], py = [], u = [], nx = [], ny = [], idx = [];
+    for (let i = 0; i <= SEG; i++) {
+      const a = (i / SEG) * Math.PI * 2;
+      for (let j = 0; j < P; j++) {
+        const [x, y] = prof[j];
+        const [x0, y0] = prof[Math.max(0, j - 1)], [x1, y1] = prof[Math.min(P - 1, j + 1)];
+        let tx = x1 - x0, ty = y1 - y0; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+        ang.push(a); px.push(x); py.push(y); u.push(j / (P - 1)); nx.push(ty); ny.push(-tx);
+        if (i < SEG && j < P - 1) { const k = i * P + j; idx.push(k, k + P, k + 1, k + 1, k + P, k + P + 1); }
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(ang.length * 3), 3));
+    for (const [nm, arr] of [['aAng', ang], ['aPx', px], ['aPy', py], ['aU', u], ['aNx', nx], ['aNy', ny]]) g.setAttribute(nm, new THREE.Float32BufferAttribute(arr, 1));
+    g.setIndex(idx);
+    this.list = [];
+    for (let i = 0; i < n; i++) {
+      const mat = new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false, side: THREE.DoubleSide,
+        uniforms: { uR: { value: 1 }, uH: { value: 1 }, uW: { value: 1 }, uA: { value: 0 }, uT: { value: 0 }, uSeed: { value: Math.random() * 10 } },
+        vertexShader: `attribute float aAng; attribute float aPx; attribute float aPy; attribute float aU; attribute float aNx; attribute float aNy;
+          uniform float uR; uniform float uH; uniform float uW; uniform float uT; uniform float uSeed;
+          varying float vU; varying float vAng; varying vec3 vN; varying vec3 vV; varying float vH;
+          void main(){
+            // choppy, uneven crest: big swells and gaps along the ring, never a clean circle
+            float sw = 0.5 + 0.5 * sin(aAng * 5.0 + uSeed * 2.0) * sin(aAng * 3.0 - uSeed);
+            float wob = 0.45 + 0.75 * sw + 0.22 * sin(aAng * 13.0 + uT * 4.0) + 0.12 * sin(aAng * 31.0 - uT * 6.0 + uSeed);
+            float h = uH * aPy * max(0.12, wob);
+            float rr = uR * (1.0 + 0.07 * sin(aAng * 4.0 + uSeed * 1.7) + 0.04 * sin(aAng * 9.0 - uT * 2.0));
+            float r = rr + aPx * uW * (0.7 + 0.35 * wob);
+            vec3 p = vec3(cos(aAng) * r, h, sin(aAng) * r);
+            vec3 n = normalize(vec3(cos(aAng) * aNx, aNy, sin(aAng) * aNx));
+            vec4 mv = modelViewMatrix * vec4(p, 1.0);
+            vN = normalize(normalMatrix * n); vV = normalize(-mv.xyz); vU = aU; vAng = aAng; vH = aPy;
+            gl_Position = projectionMatrix * mv;
+          }`,
+        fragmentShader: `uniform float uA; uniform float uT; uniform float uSeed; varying float vU; varying float vAng; varying vec3 vN; varying vec3 vV; varying float vH;
+          float hs(float x){ return fract(sin(x * 91.3 + uSeed) * 43758.5453); }
+          float vn(float x){ float i = floor(x), f = fract(x); return mix(hs(i), hs(i + 1.0), f * f * (3.0 - 2.0 * f)); }
+          void main(){
+            float ndv = abs(dot(normalize(vN), vV));
+            float fres = pow(1.0 - ndv, 3.0);
+            vec3 deep = vec3(0.015, 0.05, 0.10), body = vec3(0.05, 0.15, 0.26), psi = vec3(0.42, 0.22, 0.95);
+            float streak = vn(vAng * 60.0 + vU * 3.0 - uT * 2.0) * 0.5 + vn(vAng * 140.0 + uT) * 0.5;
+            float clumps = smoothstep(0.35, 0.75, vn(vAng * 22.0 + uSeed * 5.0 + uT * 0.8));
+            float foam = smoothstep(0.55, 0.72, vU) * (1.0 - smoothstep(0.86, 1.0, vU)) * streak * clumps;
+            foam += smoothstep(0.82, 0.98, vH) * 0.7 * streak * clumps;
+            vec3 col = mix(deep, body, vH) + psi * (0.25 + 0.75 * vH) * 0.55 + vec3(0.45, 0.6, 0.9) * fres * 0.8;
+            col = mix(col, vec3(0.82, 0.88, 1.0), clamp(foam, 0.0, 1.0));
+            float a = (0.26 + vH * 0.28 + fres * 0.28 + foam * 0.5) * uA * smoothstep(0.0, 0.1, vU) * (1.0 - smoothstep(0.9, 1.0, vU) * 0.85);
+            gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+          }`,
+      });
+      const m = new THREE.Mesh(g, mat); m.visible = false; m.renderOrder = 26; m.frustumCulled = false; scene.add(m);
+      this.list.push({ m, life: 0, ml: 1, R: 7, H: 1.6, spray: 1 });
+    }
+    this.k = 0;
+  }
+  spawn(pos, R, H, life, spray = 1) {
+    const w = this.list[this.k]; this.k = (this.k + 1) % this.list.length;
+    w.m.position.set(pos.x, 0.02, pos.z); w.R = R; w.H = H; w.life = life; w.ml = life; w.spray = spray; w.m.visible = true;
+    w.m.material.uniforms.uSeed.value = Math.random() * 10;
+    return w;
+  }
+  // radius of the crest at fraction k of its life (so gameplay hits can sync to it)
+  static radiusAt(R, k) { return 0.6 + (R - 0.6) * (1 - Math.pow(1 - k, 2)); }
+  static timeToReach(R, d, life) { const f = Math.min(1, Math.max(0, (d - 0.6) / (R - 0.6))); return (1 - Math.sqrt(1 - f)) * life; }
+  update(dt) {
+    for (const w of this.list) {
+      if (w.life <= 0) { w.m.visible = false; continue; }
+      w.life -= dt; const k = 1 - Math.max(0, w.life / w.ml);
+      const r = TideWaves.radiusAt(w.R, k);
+      const rise = Math.min(1, k / 0.14), fall = 1 - Math.max(0, (k - 0.35) / 0.65) * 0.75;
+      const h = w.H * rise * fall;
+      const U = w.m.material.uniforms;
+      U.uR.value = r; U.uH.value = h; U.uW.value = Math.max(0.5, h * 0.95); U.uT.value = G.rt;
+      U.uA.value = Math.min(1, k * 6) * (1 - Math.pow(k, 2.5));
+      // spray thrown off the crest, droplets raining back down
+      if (G.fx && h > 0.25) {
+        const cx = w.m.position.x, cz = w.m.position.z, bursts = Math.round(5 * w.spray);
+        for (let b = 0; b < bursts; b++) {
+          const a0 = Math.random() * Math.PI * 2, n = 5 + Math.floor(Math.random() * 6);
+          for (let i = 0; i < n; i++) {
+            const a = a0 + (Math.random() - 0.5) * 0.16, rr = r + 0.1 + Math.random() * 0.35;
+            const s = 3 + Math.random() * 5;
+            G.fx.add.emit(cx + Math.cos(a) * rr, h * (0.7 + Math.random() * 0.4), cz + Math.sin(a) * rr, Math.cos(a) * s, 2.5 + Math.random() * 4, Math.sin(a) * s, 0.5, 0.6, 0.85, 0.45 + Math.random() * 0.45, 0.06 + Math.random() * 0.1, 0.02, 15, 0.7, 0.8);
+          }
+        }
+        if (Math.random() < 0.6) { const a = Math.random() * 6.28; G.fx.smoke.emit(cx + Math.cos(a) * r, h * 0.7, cz + Math.sin(a) * r, Math.cos(a) * 2, 0.6, Math.sin(a) * 2, 0.55, 0.6, 0.7, 0.8, 0.5, 1.6, 0, 1.5, 0.18); }
+      }
     }
   }
 }
