@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ZONES } from './level.js';
-import { G } from './state.js';
+import * as CANNON from 'cannon-es';
+import { G, GRP, ALL } from './state.js';
 
 const CYAN = new THREE.Color(0x19d3e6), PINK = new THREE.Color(0xff2e7a), AMBER = new THREE.Color(0xff9a1f), CIVIC = new THREE.Color(0xbff6ff), VIOLET = new THREE.Color(0x9b7bff);
 const CENSUS_ZONES = new Set([1, 6]);          // checkpoint plaza, rail yard: Census ground
@@ -53,7 +54,7 @@ const adRect = (i) => new THREE.Vector4((i % 4) * 0.25, 1 - (512 + Math.floor(i 
 
 
 // ------------------------------------------------------------------ TAG atlas: 8 x 8 slots of 128 x 32, white on clear (tinted per instance)
-const TAG = { census: { counter: 0, marksman: 1, lobber: 2, warden: 3, clerk: 4, auditor: 5, lamplighter: 6, informant: 11 }, null: 8, nullName: 9, out: 10, civ: 12, halden: 19, locked: 20, obj: 21 };
+const TAG = { norec: 29, census: { counter: 0, marksman: 1, lobber: 2, warden: 3, clerk: 4, auditor: 5, lamplighter: 6, informant: 11 }, null: 8, nullName: 9, out: 10, civ: 12, halden: 19, locked: 20, obj: 21 };
 const PROP_SLOT = { trash: 21, trashR: 21, barrel: 22, drum: 22, crate: 23, box: 23, barrier: 24, car: 25, utility: 25, bag: 26, fire: 26, container: 27, chunk: 28, wallslab: 28, riotshield: 24, cagedoor: 24 };
 function buildTagAtlas() {
   const c = document.createElement('canvas'); c.width = 1024; c.height = 256; const x = c.getContext('2d');
@@ -83,6 +84,7 @@ function buildTagAtlas() {
   slot(11, () => { glyph('dots'); x.font = mono(10); x.textBaseline = 'top'; x.fillText('WITNESS ·', 32, 2); x.fillText('REPORTING', 32, 13); });
   for (let k = 0; k < 7; k++) slot(12 + k, () => { x.font = mono(10); x.textBaseline = 'middle'; x.globalAlpha = 0.9; x.fillText(`ID ${id().slice(3)}`, 8, 16); x.fillRect(8, 25, 30 + R() * 50, 1); });
   slot(19, () => { x.font = mono(10); x.textBaseline = 'top'; x.fillText('HALDEN · UNLISTED', 6, 4); x.globalAlpha = 0.6; x.fillText('NO CENSUS RECORD', 6, 17); });
+  slot(29, () => { x.font = mono(14); x.textBaseline = 'middle'; x.textAlign = 'center'; x.fillText('NO RECORD', 64, 16); x.lineWidth = 2; x.strokeRect(10, 3, 108, 26); });
   slot(20, () => { x.lineWidth = 2; x.strokeRect(2, 2, 124, 28); x.font = mono(11); x.textBaseline = 'top'; x.fillText('LOCKED · ORD 7781', 8, 5); });
   const objs = ['BIN', 'DRUM', 'CRATE', 'BARRIER', 'VEHICLE', 'BAG', 'CONTAINER', 'DEBRIS'];
   objs.forEach((o, k) => slot(21 + k, () => { x.font = mono(11); x.textBaseline = 'middle'; x.fillText(`OBJ ${44 + k}-${110 + k * 7} · ${o}`, 6, 16); }));
@@ -115,6 +117,45 @@ void main(){
   float scan = 0.8 + 0.2 * step(0.5, fract(gl_FragCoord.y / 3.0));
   gl_FragColor = vec4(vCol.rgb * (a * scan + wipe * 1.5), 1.0) * vCol.a;
 }`;
+
+
+// shop awnings: 2 x 4 cells of 256 x 64 (R: menu text, G: frame and price bars)
+const AWN = { noodles: ['NOODLE · 4.80', 'GYOZA 3.20'], mart: ['24H MART', 'FIZZ 2 FOR 1'], laundry: ['WASH · 9 MIN', 'DRY · FOLD'], pawn: ['BUY · SELL', 'CHIPS · GOLD'],
+  bar: ['HIGHBALL · 6', 'HAPPY HOUR'], pharmacy: ['TONIC · PATCH', 'OPEN LATE'], repair: ['SCREENS · CHIPS', 'FIX WHILE U WAIT'], other: ['OPEN', 'COME IN'] };
+const AWN_KEYS = Object.keys(AWN);
+function buildAwningAtlas() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256; const x = c.getContext('2d');
+  x.fillStyle = '#000'; x.fillRect(0, 0, 512, 256); x.globalCompositeOperation = 'lighter';
+  AWN_KEYS.forEach((k, i) => {
+    const ox = (i % 2) * 256, oy = Math.floor(i / 2) * 64;
+    x.strokeStyle = 'rgb(0,255,0)'; x.lineWidth = 2; x.beginPath(); x.roundRect(ox + 4, oy + 4, 248, 56, 8); x.stroke();
+    x.fillStyle = 'rgb(0,255,0)'; for (let b = 0; b < 6; b++) x.fillRect(ox + 14 + b * 40, oy + 50, 26, 3);
+    x.fillStyle = 'rgb(255,0,0)'; x.textBaseline = 'middle'; x.font = '30px "Bebas Neue", Impact, sans-serif'; x.fillText(AWN[k][0], ox + 14, oy + 22);
+    x.font = '18px "Bebas Neue", Impact, sans-serif'; x.globalAlpha = 0.75; x.fillText(AWN[k][1], ox + 14, oy + 42); x.globalAlpha = 1;
+  });
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+}
+const awnRect = (i) => new THREE.Vector4((i % 2) * 0.5, 1 - (Math.floor(i / 2) + 1) * 0.25, 0.5, 0.25);
+// blade signs: 8 columns of Cantor-script glyphs stacked as neon tubes (R tube, G backing frame), 128 x 1024 each
+function buildBladeAtlas() {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 1024; const x = c.getContext('2d');
+  x.fillStyle = '#000'; x.fillRect(0, 0, 1024, 1024); x.globalCompositeOperation = 'lighter'; x.lineCap = 'round'; x.lineJoin = 'round';
+  const node = (i) => [24 + (i % 3) * 40, 24 + Math.floor(i / 3) * 40];
+  for (let col = 0; col < 8; col++) {
+    const ox = col * 128;
+    x.strokeStyle = 'rgb(0,255,0)'; x.lineWidth = 3; x.beginPath(); x.roundRect(ox + 6, 6, 116, 1012, 14); x.stroke();
+    const n = 5 + (col % 2);
+    for (let g = 0; g < n; g++) {
+      const oy = 20 + g * (990 / n);
+      x.save(); x.translate(ox + 4, oy + (990 / n - 128) / 2); x.strokeStyle = 'rgb(255,0,0)'; x.lineWidth = 11; x.shadowColor = 'rgb(255,0,0)'; x.shadowBlur = 14;
+      // a pseudo-glyph on a 3x3 node grid: 2-4 strokes, always one vertical
+      const vx = Math.floor(R() * 3); x.beginPath(); const a = node(vx), b = node(vx + 6); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]);
+      for (let k = 0, m = 1 + Math.floor(R() * 3); k < m; k++) { const i0 = Math.floor(R() * 9); let i1 = Math.floor(R() * 9); if (i1 === i0) i1 = (i0 + 4) % 9; const p0 = node(i0), p1 = node(i1); if (Math.abs(p0[0] - p1[0]) === Math.abs(p0[1] - p1[1]) || p0[0] === p1[0] || p0[1] === p1[1]) { x.moveTo(p0[0], p0[1]); x.lineTo(p1[0], p1[1]); } }
+      x.stroke(); x.restore();
+    }
+  }
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+}
 
 // one shader for every piece of AR: two-tone mask, screen scanlines, flicker, violet interference near Null
 const HOLO_VS = `
@@ -152,24 +193,25 @@ function mergeByMaterial(g, keep = []) {
 }
 
 export function makeCyber(scene, level, wet, world) {
-  const C = { mats: [], update: null, stats: {} };
+  const C = { mats: [], update: null, stats: {}, tagHooks: [], ticks: [] };
   // walls (tall static boxes) — strips and cables only go where there's a facade to fix them to
   const walls = (world ? world.bodies : []).filter(b => b.mass === 0 && b.shapes[0] && b.shapes[0].halfExtents && b.shapes[0].halfExtents.y >= 1.2)
     .map(b => { const h = b.shapes[0].halfExtents; return [b.position.x - h.x, b.position.x + h.x, b.position.z - h.z, b.position.z + h.z]; });
   const wallAt = (x, z, pad = 0.45) => walls.find(w => x > w[0] - pad && x < w[1] + pad && z > w[2] - pad && z < w[3] + pad);
   const atlas = buildAtlas();
-  const holoMat = (gain) => { const m = new THREE.ShaderMaterial({ uniforms: { tAtlas: { value: atlas }, uTime: { value: 0 }, uHero: { value: new THREE.Vector3() }, uGain: { value: gain } }, vertexShader: HOLO_VS, fragmentShader: HOLO_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }); C.mats.push(m); return m; };
-  const holoIM = (n, gain, geo = new THREE.PlaneGeometry(1, 1)) => {
+  const holoMat = (gain, tex = atlas) => { const m = new THREE.ShaderMaterial({ uniforms: { tAtlas: { value: tex }, uTime: { value: 0 }, uHero: { value: new THREE.Vector3() }, uGain: { value: gain } }, vertexShader: HOLO_VS, fragmentShader: HOLO_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }); C.mats.push(m); return m; };
+  const holoIM = (n, gain, geo = new THREE.PlaneGeometry(1, 1), tex = atlas) => {
     geo = geo.clone();
     geo.setAttribute('aCell', new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4));
     geo.setAttribute('aColA', new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3));
     geo.setAttribute('aColB', new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3));
     geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(new Float32Array(n), 1));
-    const im = new THREE.InstancedMesh(geo, holoMat(gain), n); im.count = 0; im.frustumCulled = false; im.renderOrder = 5; scene.add(im); return im;
+    const im = new THREE.InstancedMesh(geo, holoMat(gain, tex), n); im.count = 0; im.frustumCulled = false; im.renderOrder = 5; scene.add(im); return im;
   };
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), E = new THREE.Euler();
-  const put = (im, pos, euler, sx, sy, cellV, a, b, ph) => {
-    const i = im.count++; Q.setFromEuler(euler); M.compose(pos, Q, S.set(sx, sy, 1)); im.setMatrixAt(i, M);
+  const put = (im, pos, euler, sx, sy, cellV, a, b, ph) => { Q.setFromEuler(euler); putQ(im, pos, Q, sx, sy, cellV, a, b, ph); };
+  const putQ = (im, pos, quat, sx, sy, cellV, a, b, ph) => {
+    const i = im.count++; Q.copy(quat); M.compose(pos, Q, S.set(sx, sy, 1)); im.setMatrixAt(i, M);
     const g = im.geometry.attributes; g.aCell.setXYZW(i, cellV.x, cellV.y, cellV.z, cellV.w); g.aColA.setXYZ(i, a.r, a.g, a.b); g.aColB.setXYZ(i, b.r, b.g, b.b); g.aPhase.setX(i, ph ?? R());
   };
   const allRects = []; ZONES.forEach((Z, zi) => Z.rects.forEach(r => allRects.push({ zi, x0: r[0], x1: r[1], z0: r[2], z1: r[3], o: r[4] || {} })));
@@ -177,7 +219,7 @@ export function makeCyber(scene, level, wet, world) {
   const zoneCol = (zi) => CENSUS_ZONES.has(zi) ? AMBER : PINK_ZONES.has(zi) ? PINK : CYAN;
 
   // soft additive light pools: how the AR and the LEDs reach the ground without real lights
-  const GLOW_N = 96, glowGeo = new THREE.CircleGeometry(1, 20); glowGeo.rotateX(-Math.PI / 2);
+  const GLOW_N = 180, glowGeo = new THREE.CircleGeometry(1, 20); glowGeo.rotateX(-Math.PI / 2);
   glowGeo.setAttribute('aCol', new THREE.InstancedBufferAttribute(new Float32Array(GLOW_N * 3), 3));
   const glowIM = new THREE.InstancedMesh(glowGeo, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: 'attribute vec3 aCol; varying vec3 vC; varying vec2 vP; void main(){ vC = aCol; vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }',
@@ -185,6 +227,7 @@ export function makeCyber(scene, level, wet, world) {
   glowIM.count = 0; glowIM.frustumCulled = false; glowIM.renderOrder = 2; scene.add(glowIM); wet.hide.push(glowIM);
   const glow = (x, y, z, r, col, k) => { if (glowIM.count >= GLOW_N) return; const i = glowIM.count++; M.compose(P.set(x, y, z), Q.identity(), S.set(r, 1, r)); glowIM.setMatrixAt(i, M); glowIM.geometry.attributes.aCol.setXYZ(i, col.r * k, col.g * k, col.b * k); };
 
+  const anchors = [];        // facade feet along the playable edges: where street furniture and wall hardware can go
   // ---------------- 1. LED kerb and base strips: every playable edge, with data pulses running along them
   {
     const ledFS = `uniform float uTime; uniform vec3 uHero; varying vec3 vC; varying float vD; varying float vK; varying vec3 vW; varying vec2 vUv;
@@ -200,6 +243,7 @@ export function makeCyber(scene, level, wet, world) {
     C.mats.push(ledMat);
     const perZone = new Map();
     for (const r of allRects) {
+      if (r.zi === 4) continue;                   // Cold Storage is an AR blackout: Moth's uncounted are kept where nothing renders
       const col = zoneCol(r.zi);
       const edges = [[r.x0, r.z0, r.x1, r.z0, 0, 1], [r.x1, r.z0, r.x1, r.z1, -1, 0], [r.x1, r.z1, r.x0, r.z1, 0, -1], [r.x0, r.z1, r.x0, r.z0, 1, 0]];   // [a, b, inward normal]
       let dist = 0;
@@ -211,7 +255,8 @@ export function makeCyber(scene, level, wet, world) {
           const mx = (x0 + x1) / 2 - nx * 0.6, mz = (z0 + z1) / 2 - nz * 0.6;        // just outside this edge
           const open = (r.o.openN && nz === 1) || (r.o.openS && nz === -1) || (r.o.openW && nx === 1);   // water edges have invisible walls: no facade there
           const wb = !open && !inAny(mx, mz) && wallAt(mx, mz);
-          if (!wb) { dist += len / segs; continue; }
+          const moth = level.mothDoor && Math.hypot((x0 + x1) / 2 - level.mothDoor.x, (z0 + z1) / 2 - level.mothDoor.z) < 15;   // the strips stop short of her door
+          if (!wb || moth) { dist += len / segs; continue; }
           // snap onto the actual facade (the walk rect stops a little short of it)
           const face = nx === -1 ? wb[0] : nx === 1 ? wb[1] : nz === -1 ? wb[2] : wb[3];
           const edge = nx ? ax : az, fo = Math.abs(face - edge) < 1.5 ? (face - edge) * -(nx || nz) : 0;
@@ -228,6 +273,7 @@ export function makeCyber(scene, level, wet, world) {
             g.setAttribute('aC', new THREE.BufferAttribute(aC, 3)); g.setAttribute('aD', new THREE.BufferAttribute(aD, 1)); g.setAttribute('aK', new THREE.BufferAttribute(aK, 1));
             if (!perZone.has(r.zi)) perZone.set(r.zi, []); perZone.get(r.zi).push(g);
           }
+          anchors.push({ x: (x0 + x1) / 2 + ox, z: (z0 + z1) / 2 + oz, nx, nz, zi: r.zi, len: sl, top: wb });
           dist += sl;
         }
       }
@@ -239,6 +285,7 @@ export function makeCyber(scene, level, wet, world) {
   {
     const floor = holoIM(40, 0.34);
     ZONES.forEach((Z, zi) => {
+      if (zi === 4) return;
       const r = Z.rects[Z.rects.length - 1], cx = (r[0] + r[1]) / 2, cz = (r[2] + r[3]) / 2, w = r[1] - r[0], d = r[3] - r[2];
       const census = CENSUS_ZONES.has(zi), a = census ? AMBER : CIVIC, b = census ? new THREE.Color(0xffd9a0) : zoneCol(zi);
       // the plate lies across the street, readable from the camera (south)
@@ -297,7 +344,7 @@ export function makeCyber(scene, level, wet, world) {
       const w = r.x1 - r.x0, d = r.z1 - r.z0, col = zoneCol(r.zi);
       const narrowX = w <= d;                       // cables cross the short way
       const crossLen = narrowX ? w : d, along = narrowX ? d : w;
-      if (crossLen > 26 || r.zi === 3 || r.zi >= 8) continue;   // market has its own canopy; docks/ferry are open water
+      if (crossLen > 26 || r.zi === 3 || r.zi === 4 || r.zi >= 8) continue;   // market has its own canopy; docks/ferry are open water
       // spans skew across the lane (never neat rungs), sparser over wide streets so the canopy frames the play instead of barring it
       const gap = 7 + crossLen * 0.45;
       for (let s = 2 + R() * gap * 0.6; s < along - 2; s += gap * (0.7 + R() * 0.6)) {
@@ -336,7 +383,7 @@ export function makeCyber(scene, level, wet, world) {
       A.aPos.setXYZ(n, x, y, z); A.aSize.setXY(n, w, h); A.aCell.setXYZW(n, r[0], r[1], r[2], r[3]); A.aCol.setXYZW(n, col.r, col.g, col.b, alpha); A.aHp.setXY(n, hp, reveal); n++;
     };
     const state = new WeakMap();
-    const CEN = new THREE.Color(0xff9a1f).multiplyScalar(1.6), CIV = new THREE.Color(0xbff6ff), WIT = new THREE.Color(0xf4f4f4).multiplyScalar(1.2), NUL = new THREE.Color(0xb39bff).multiplyScalar(1.3), AUD = new THREE.Color(0xff3a2a).multiplyScalar(1.6);
+    const CEN = new THREE.Color(0xff9a1f).multiplyScalar(1.6), CIV = new THREE.Color(0xdcebff), WIT = new THREE.Color(0xf4f4f4).multiplyScalar(1.2), NUL = new THREE.Color(0xb39bff).multiplyScalar(1.3), AUD = new THREE.Color(0xff3a2a).multiplyScalar(1.6);
     const update = (dt) => {
       n = 0; const t = G.rt || 0;
       for (const e of G.enemies || []) {
@@ -379,6 +426,7 @@ export function makeCyber(scene, level, wet, world) {
           const op = near.body.position; add(op.x, op.y + (near.size ? near.size.y * 0.5 : 0.5) + 0.4, op.z, 1.2, 0.3, PROP_SLOT[near.type] ?? TAG.obj, NUL, 0.55, -1, st.rev);
         }
       }
+      for (const f of C.tagHooks) f(add);
       geo.instanceCount = n;
       for (const k in A) { A[k].needsUpdate = true; A[k].clearUpdateRanges(); A[k].addUpdateRange(0, n * A[k].itemSize); }
     };
@@ -470,6 +518,247 @@ export function makeCyber(scene, level, wet, world) {
     for (const [cx, cz, w, d] of [[-50, -170, 260, 200], [0, 65, 160, 80]]) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat); m.rotation.x = -Math.PI / 2; m.position.set(cx, -1.07, cz); m.renderOrder = 2; scene.add(m); wet.hide.push(m); }
   }
 
+
+  // ---------------- 13. shopfront holo-awnings: sheets of menu light over the pavement, and the rug of light they cast
+  {
+    const shops = (level.facade && level.facade.shops) || [];
+    const aw = holoIM(Math.max(1, shops.length), 0.42, new THREE.PlaneGeometry(1, 1), buildAwningAtlas());
+    const rugGeo = new THREE.PlaneGeometry(1, 1); rugGeo.rotateX(-Math.PI / 2); rugGeo.setAttribute('aCol', new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, shops.length) * 3), 3));
+    const rug = new THREE.InstancedMesh(rugGeo, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      vertexShader: 'attribute vec3 aCol; varying vec3 vC; varying vec2 vU; void main(){ vC = aCol; vU = uv; gl_Position = projectionMatrix * viewMatrix * modelMatrix * instanceMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'varying vec3 vC; varying vec2 vU; void main(){ vec2 e = smoothstep(vec2(0.0), vec2(0.25), min(vU, 1.0 - vU)); gl_FragColor = vec4(vC * e.x * e.y, 1.0); }' }), Math.max(1, shops.length));
+    rug.count = 0; rug.frustumCulled = false; rug.renderOrder = 2; scene.add(rug); wet.hide.push(rug);
+    const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), MB = new THREE.Matrix4(), QA = new THREE.Quaternion();
+    for (const sh of shops) {
+      const zi = ZONES.findIndex(Z2 => Z2.rects.some(r => sh.p.x > r[0] - 2 && sh.p.x < r[1] + 2 && sh.p.z > r[2] - 2 && sh.p.z < r[3] + 2));
+      if (zi === 4) continue;
+      const rose = sh.light.r > sh.light.b * 1.15 || PINK_ZONES.has(zi), a = rose ? PINK : CYAN, b = rose ? new THREE.Color(0xff7ab0) : CIVIC;
+      const n = sh.n, ry = Math.atan2(n.x, n.z), t = 0.14;
+      X.set(Math.cos(ry), 0, -Math.sin(ry)); Y.set(-n.x, 0, -n.z); Z.crossVectors(X, Y);
+      const Yt = Y.clone().multiplyScalar(Math.cos(t)).addScaledVector(Z, Math.sin(t)), Zt = new THREE.Vector3().crossVectors(X, Yt);
+      MB.makeBasis(X, Yt, Zt); QA.setFromRotationMatrix(MB);
+      const w = Math.min(sh.w, 7), ki = Math.max(0, AWN_KEYS.indexOf(sh.kind));
+      putQ(aw, P.set(sh.p.x + n.x * 0.85, 2.62, sh.p.z + n.z * 0.85), QA, w, 1.5, awnRect(ki < 0 ? 7 : ki), a, b);
+      const i = rug.count++; M.compose(P.set(sh.p.x + n.x * 1.0, 0.016, sh.p.z + n.z * 1.0), Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry), S.set(w + 0.6, 1, 2.0)); rug.setMatrixAt(i, M);
+      rugGeo.attributes.aCol.setXYZ(i, a.r * 0.13, a.g * 0.13, a.b * 0.13);
+    }
+    for (const k of ['aCell', 'aColA', 'aColB', 'aPhase']) aw.geometry.attributes[k].needsUpdate = true;
+    C.stats.awnings = aw.count;
+  }
+
+  // ---------------- 14. roof tech farms: masts with red beacons, cooling fans ringed in cyan, Census relay nodes
+  {
+    const dark = [], rings = [], amber = [], beacons = [], fans = [];
+    const censusNear = (x, z) => allRects.some(r => CENSUS_ZONES.has(r.zi) && x > r.x0 - 14 && x < r.x1 + 14 && z > r.z0 - 14 && z < r.z1 + 14);
+    (level.roofs || []).forEach((rf, ri) => {
+      const w = rf.x1 - rf.x0, d = rf.z1 - rf.z0; if (w < 4 || d < 4 || (ri % 2 && w * d < 120)) return;
+      // roofs just south of a lane sit right under the camera (and already carry the billboard row): keep them clear
+      if (allRects.some(r => Math.abs(r.z1 - rf.z0) < 1.5 && Math.min(r.x1, rf.x1) - Math.max(r.x0, rf.x0) > 4)) return;
+      const spot = () => [rf.x0 + 1.2 + R() * (w - 2.4), rf.z0 + 1.2 + R() * (d - 2.4)];
+      for (let k = 0, m = 1 + Math.floor(R() * 3); k < m; k++) {
+        const [x, z] = spot(), h = 2 + R() * 2;
+        const g = new THREE.CylinderGeometry(0.03, 0.04, h, 5); g.translate(x, rf.h + h / 2, z); dark.push(g);
+        if (R() < 0.4) { const dsh = new THREE.CylinderGeometry(0.4, 0.08, 0.12, 12); dsh.rotateX(0.7); dsh.translate(x, rf.h + h * 0.6, z + 0.2); dark.push(dsh); }
+        beacons.push([x, rf.h + h + 0.05, z]);
+      }
+      if (R() < 0.75) {
+        const [x, z] = spot(); const hb = new THREE.BoxGeometry(1.2, 0.5, 1.2); hb.translate(x, rf.h + 0.25, z); dark.push(hb);
+        const rg = new THREE.TorusGeometry(0.45, 0.03, 6, 24); rg.rotateX(Math.PI / 2); rg.translate(x, rf.h + 0.52, z); rings.push(rg);
+        fans.push([x, rf.h + 0.53, z, R() * 6]);
+        glow(x, rf.h + 0.04, z, 1.8, CYAN, 0.08);
+      }
+      if (censusNear((rf.x0 + rf.x1) / 2, (rf.z0 + rf.z1) / 2)) {
+        const [x, z] = spot(); const nb = new THREE.BoxGeometry(0.5, 1.4, 0.5); nb.translate(x, rf.h + 0.7, z); dark.push(nb);
+        const led = new THREE.BoxGeometry(0.16, 0.05, 0.16); led.translate(x, rf.h + 1.43, z); amber.push(led);
+      }
+    });
+    const hw = new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.5, metalness: 0.7 });
+    if (dark.length) scene.add(new THREE.Mesh(mergeGeometries(dark), hw));
+    if (rings.length) scene.add(new THREE.Mesh(mergeGeometries(rings), new THREE.MeshBasicMaterial({ color: CYAN.clone().multiplyScalar(1.1), toneMapped: false })));
+    if (amber.length) scene.add(new THREE.Mesh(mergeGeometries(amber), new THREE.MeshBasicMaterial({ color: AMBER.clone().multiplyScalar(1.4), toneMapped: false })));
+    if (beacons.length) {
+      const bg = new THREE.SphereGeometry(0.07, 6, 4); const ph = new Float32Array(beacons.length); beacons.forEach((_, i) => ph[i] = R() * 10);
+      bg.setAttribute('aPh', new THREE.InstancedBufferAttribute(ph, 1));
+      const bm = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 } }, vertexShader: 'attribute float aPh; varying float vPh; void main(){ vPh = aPh; gl_Position = projectionMatrix * viewMatrix * modelMatrix * instanceMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform float uTime; varying float vPh; void main(){ float on = step(0.82, fract(uTime * (0.5 + fract(vPh) * 0.5) + vPh)); gl_FragColor = vec4(vec3(1.0, 0.23, 0.19) * (0.12 + 2.2 * on), 1.0); }' });
+      C.mats.push(bm);
+      const bi = new THREE.InstancedMesh(bg, bm, beacons.length); beacons.forEach(([x, y, z], i) => { M.makeTranslation(x, y, z); bi.setMatrixAt(i, M); }); scene.add(bi);
+    }
+    if (fans.length) {
+      const bl = mergeGeometries([new THREE.BoxGeometry(0.88, 0.02, 0.12), new THREE.BoxGeometry(0.12, 0.02, 0.88)]);
+      const fi = new THREE.InstancedMesh(bl, new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.4, metalness: 0.8 }), fans.length); fi.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(fi);
+      const up = new THREE.Vector3(0, 1, 0);
+      C.ticks.push((dt, t) => { fans.forEach(([x, y, z, a], i) => { M.compose(P.set(x, y, z), Q.setFromAxisAngle(up, a + t * 9), S.set(1, 1, 1)); fi.setMatrixAt(i, M); }); fi.instanceMatrix.needsUpdate = true; });
+    }
+    C.stats.beacons = beacons.length; C.stats.fans = fans.length;
+  }
+
+  // ---------------- 17. retrofit: cast-iron lamps wear a cyan LED collar; vending machines glow against the walls
+  {
+    const col = [];
+    for (const [x, z] of level.lampPosts || []) {
+      if (level.mothDoor && Math.hypot(x - level.mothDoor.x, z - level.mothDoor.z) < 18) continue;   // analog near Moth: no retrofits
+      const tg = new THREE.TorusGeometry(0.16, 0.035, 6, 16); tg.rotateX(Math.PI / 2); tg.translate(x, 3.0, z); col.push(tg);
+      glow(x, 0.02, z, 1.4, CYAN, 0.05);
+    }
+    if (col.length) scene.add(new THREE.Mesh(mergeGeometries(col), new THREE.MeshBasicMaterial({ color: CYAN.clone().multiplyScalar(1.4), toneMapped: false })));
+    // vending machines: 2 per city zone, on a quiet stretch of wall
+    const body = [], fronts = [], used = [];
+    const shops = (level.facade && level.facade.shops) || [];
+    for (const zi of [0, 2, 3, 5, 7]) {
+      const cand = anchors.filter(a => a.zi === zi && a.len > 1.5 && !shops.some(sh => Math.hypot(sh.p.x - a.x, sh.p.z - a.z) < 4.5));
+      for (let k = 0; k < 2 && cand.length; k++) {
+        const a = cand.splice(Math.floor(R() * cand.length), 1)[0];
+        if (used.some(u => Math.hypot(u[0] - a.x, u[1] - a.z) < 6)) continue;
+        used.push([a.x, a.z]);
+        const yaw = Math.atan2(a.nx, a.nz), cx = a.x + a.nx * 0.42, cz = a.z + a.nz * 0.42;
+        const bx = new THREE.BoxGeometry(0.95, 1.9, 0.75); bx.rotateY(yaw); bx.translate(cx, 0.95, cz); body.push(bx);
+        const c = R() < 0.5 ? CYAN : PINK;
+        const fr = new THREE.PlaneGeometry(0.75, 1.35); fr.rotateY(yaw); fr.translate(cx + a.nx * 0.381, 1.12, cz + a.nz * 0.381);
+        const top = new THREE.PlaneGeometry(0.95, 0.06); top.rotateX(-Math.PI / 2); top.rotateY(yaw); top.translate(cx + a.nx * 0.34, 1.905, cz + a.nz * 0.34);
+        for (const g of [fr, top]) { const n = g.attributes.position.count, cc = new Float32Array(n * 3); for (let v = 0; v < n; v++) cc.set([c.r, c.g, c.b], v * 3); g.setAttribute('color', new THREE.BufferAttribute(cc, 3)); g.deleteAttribute('uv'); g.deleteAttribute('normal'); fronts.push(g); }
+        glow(cx + a.nx * 1.0, 0.02, cz + a.nz * 1.0, 1.6, c, 0.13);
+        if (world) { const b = new CANNON.Body({ mass: 0, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL }); b.addShape(new CANNON.Box(new CANNON.Vec3(0.475, 0.95, 0.375))); b.position.set(cx, 0.95, cz); b.quaternion.setFromEuler(0, yaw, 0); world.addBody(b); }
+      }
+    }
+    if (body.length) scene.add(new THREE.Mesh(mergeGeometries(body), new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.35, metalness: 0.6 })));
+    if (fronts.length) {
+      const fm = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 } }, vertexColors: true,
+        vertexShader: 'varying vec3 vC; varying vec2 vP; void main(){ vC = color; vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform float uTime; varying vec3 vC; varying vec2 vP; void main(){ float rows = step(0.35, fract(vP.y * 7.0)); gl_FragColor = vec4(vC * (0.55 + 0.45 * rows) * (0.95 + 0.05 * sin(uTime * 40.0)), 1.0); }' });
+      C.mats.push(fm); scene.add(new THREE.Mesh(mergeGeometries(fronts), fm));
+    }
+    C.stats.vending = used.length;
+  }
+
+  // ---------------- 11. Census scanner arches at the checkpoints, and camera domes on Census walls
+  {
+    const arches = [[31.3, -12.1, -6.9], [31.3, -81.6, -76.4]];     // just inside the plaza and the rail yard, where the side lanes come in (x, z0, z1)
+    const hw = [], led = [];
+    const curtMat = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uD: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      vertexShader: 'uniform float uD; varying vec2 vU; void main(){ vU = uv; vec3 p = position; p.x += uD * (1.0 - uv.y); gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }',
+      fragmentShader: 'varying vec2 vU; void main(){ float a = 0.025 + 0.09 * (1.0 - vU.y) * (1.0 - vU.y) + 1.3 * smoothstep(0.035, 0.0, vU.y); gl_FragColor = vec4(vec3(1.0, 0.6, 0.12) * a, 1.0); }' });
+    C.mats.push(curtMat);
+    const ARCH = [];
+    for (const [x, z0, z1] of arches) {
+      for (const z of [z0, z1]) { const p = new THREE.BoxGeometry(0.4, 3.2, 0.4); p.translate(x, 1.6, z); hw.push(p); const l = new THREE.BoxGeometry(0.06, 3.0, 0.06); l.translate(x, 1.6, z + (z === z0 ? 0.21 : -0.21)); led.push(l);
+        if (world) { const b = new CANNON.Body({ mass: 0, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL }); b.addShape(new CANNON.Box(new CANNON.Vec3(0.2, 1.6, 0.2))); b.position.set(x, 1.6, z); world.addBody(b); } }
+      const beam = new THREE.BoxGeometry(0.3, 0.3, z1 - z0 + 0.4); beam.translate(x, 3.35, (z0 + z1) / 2); hw.push(beam);
+      const bl = new THREE.BoxGeometry(0.06, 0.06, z1 - z0 - 0.2); bl.translate(x, 3.18, (z0 + z1) / 2); led.push(bl);
+      // the scan curtain: hangs from the beam, its foot sweeps along the lane so it reads from above
+      const g = new THREE.PlaneGeometry(z1 - z0 - 0.4, 3.1); g.rotateY(Math.PI / 2); g.translate(x, 1.6, (z0 + z1) / 2);
+      const cm = new THREE.Mesh(g, curtMat.clone()); cm.renderOrder = 6; scene.add(cm); C.mats.push(cm.material); wet.hide.push(cm);
+      ARCH.push({ x, z0, z1, m: cm });
+    }
+    // camera domes along Census walls, each with a sweeping view cone on the street
+    const domes = [], cones = [];
+    for (const zi of CENSUS_ZONES) {
+      let last = null;
+      for (const a of anchors.filter(a2 => a2.zi === zi)) {
+        if (last && Math.hypot(a.x - last.x, a.z - last.z) < 16) continue; last = a;
+        const dg = new THREE.SphereGeometry(0.25, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2); dg.rotateX(Math.PI / 2); dg.rotateY(Math.atan2(a.nx, a.nz)); dg.translate(a.x, 4.5, a.z); hw.push(dg);
+        const lens = new THREE.SphereGeometry(0.07, 6, 4); lens.translate(a.x + a.nx * 0.22, 4.45, a.z + a.nz * 0.22); led.push(lens);
+        cones.push({ x: a.x + a.nx * 0.3, z: a.z + a.nz * 0.3, yaw: Math.atan2(a.nx, a.nz), ph: R() * 6 });
+      }
+    }
+    if (hw.length) scene.add(new THREE.Mesh(mergeGeometries(hw.map(g => g.index ? g.toNonIndexed() : g).map(g => { g.deleteAttribute('uv'); return g; })), new THREE.MeshStandardMaterial({ color: 0x121417, roughness: 0.45, metalness: 0.7 })));
+    if (led.length) scene.add(new THREE.Mesh(mergeGeometries(led.map(g => g.index ? g.toNonIndexed() : g).map(g => { g.deleteAttribute('uv'); return g; })), new THREE.MeshBasicMaterial({ color: AMBER.clone().multiplyScalar(2.0), toneMapped: false })));
+    let coneIM = null;
+    if (cones.length) {
+      const cg = new THREE.BufferGeometry(); const v = [0, 0, 0, -1, 0, 3, 1, 0, 3]; cg.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); cg.setAttribute('uv', new THREE.Float32BufferAttribute([0.5, 0, 0, 1, 1, 1], 2));
+      coneIM = new THREE.InstancedMesh(cg, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * viewMatrix * modelMatrix * instanceMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'varying vec2 vU; void main(){ float a = 0.06 * (1.0 - vU.y * 0.6) + 0.14 * smoothstep(0.9, 1.0, vU.y); gl_FragColor = vec4(vec3(1.0, 0.6, 0.12) * a, 1.0); }' }), cones.length);
+      coneIM.frustumCulled = false; coneIM.renderOrder = 3; coneIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(coneIM); wet.hide.push(coneIM);
+    }
+    const up = new THREE.Vector3(0, 1, 0);
+    C.ticks.push((dt, t) => {
+      for (const A2 of ARCH) A2.m.material.uniforms.uD.value = Math.sin(t * Math.PI) * 1.3;     // 0.5 Hz sweep
+      if (coneIM) { cones.forEach((c, i) => { M.compose(P.set(c.x, 0.018, c.z), Q.setFromAxisAngle(up, c.yaw + Math.sin(t * 1.26 + c.ph) * 0.61), S.set(1, 1, 1)); coneIM.setMatrixAt(i, M); }); coneIM.instanceMatrix.needsUpdate = true; }
+    });
+    // Null walks through and the arch finds nothing to read
+    C.tagHooks.push((add) => {
+      const h = G.hero && G.hero.body && G.hero.body.position; if (!h) return;
+      for (const A2 of ARCH) if (Math.abs(h.x - A2.x) < 1.6 && h.z > A2.z0 && h.z < A2.z1) {
+        const glitch = Math.random() < 0.35;
+        add(A2.x + (glitch ? (Math.random() - 0.5) * 0.15 : 0), 3.9, (A2.z0 + A2.z1) / 2, 2.0, 0.5, TAG.norec, glitch ? VIOLET.clone().multiplyScalar(1.6) : AMBER.clone().multiplyScalar(1.7), 0.95);
+      }
+    });
+    C.stats.domes = cones.length;
+  }
+
+  // ---------------- 18. maglev guide beam down the Tram Cut: a tram somewhere, every 8 s
+  {
+    const gs = [];
+    for (const [x0, z0, x1, z1] of [[47, -30.5, 47, -46.3], [8, -46.3, 49, -46.3]]) {
+      const len = Math.hypot(x1 - x0, z1 - z0), ry = Math.atan2(x1 - x0, z1 - z0);
+      for (const [w, off, h, kind] of [[0.4, 0, 0.12, 0], [0.05, -0.23, 0.13, 1], [0.05, 0.23, 0.13, 1]]) {
+        const g = new THREE.BoxGeometry(w, kind ? 0.02 : 0.06, len); g.rotateY(ry); g.translate((x0 + x1) / 2 + Math.cos(ry) * off, h, (z0 + z1) / 2 - Math.sin(ry) * off);
+        const n = g.attributes.position.count, aD = new Float32Array(n), aK = new Float32Array(n).fill(kind), pos = g.attributes.position;
+        for (let v = 0; v < n; v++) aD[v] = (x0 === 47 && z0 === -30.5 ? 0 : 15.8) + Math.hypot(pos.getX(v) - x0, pos.getZ(v) - z0);
+        g.setAttribute('aD', new THREE.BufferAttribute(aD, 1)); g.setAttribute('aK', new THREE.BufferAttribute(aK, 1)); g.deleteAttribute('uv'); gs.push(g);
+      }
+    }
+    const bm = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 } },
+      vertexShader: 'attribute float aD; attribute float aK; varying float vD; varying float vK; varying vec3 vN; void main(){ vD = aD; vK = aK; vN = normal; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform float uTime; varying float vD; varying float vK; varying vec3 vN; void main(){ if (vK < 0.5) { gl_FragColor = vec4(vec3(0.05, 0.055, 0.065) * (0.6 + 0.4 * vN.y), 1.0); return; } float head = mod(uTime * 30.0, 240.0); float p = smoothstep(2.5, 0.0, head - vD) * step(vD, head); gl_FragColor = vec4(vec3(0.1, 0.83, 0.9) * (0.6 + 2.6 * p), 1.0); }' });
+    C.mats.push(bm); scene.add(new THREE.Mesh(mergeGeometries(gs), bm));
+  }
+
+  // ---------------- 15. blade signs: neon Cantor script on vertical blades, tilted up at the sky lanes (and the camera)
+  {
+    const bl = holoIM(16, 1.0, new THREE.PlaneGeometry(1, 1), buildBladeAtlas());
+    const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), MB = new THREE.Matrix4(), QA = new THREE.Quaternion();
+    for (const zi of [0, 2, 3, 5]) {
+      const cand = anchors.filter(a => a.zi === zi); const picked = [];
+      for (let k = 0; k < 8 && picked.length < 3 && cand.length; k++) {
+        const a = cand[Math.floor(R() * cand.length)];
+        if (picked.some(p2 => Math.hypot(p2.x - a.x, p2.z - a.z) < 10)) continue; picked.push(a);
+        const hero = picked.length === 1, tilt = (30 + R() * 15) * Math.PI / 180;
+        X.set(a.nx, 0, a.nz); Z.crossVectors(X, new THREE.Vector3(0, 1, 0)); if (Z.z < 0 || (Z.z === 0 && Z.x < 0)) { X.negate(); Z.negate(); }
+        Y.set(0, Math.cos(tilt), 0).addScaledVector(Z, -Math.sin(tilt)); Z.crossVectors(X, Y);
+        MB.makeBasis(X, Y, Z); QA.setFromRotationMatrix(MB);
+        const c = PINK_ZONES.has(zi) || R() < 0.4 ? PINK : CYAN, h = 4 + R() * 2;
+        putQ(bl, P.set(a.x + a.nx * 0.45, 3.4 + h / 2 * Math.cos(tilt), a.z + a.nz * 0.45), QA, 0.6, h, new THREE.Vector4(Math.floor(R() * 8) / 8, 0, 1 / 8, 1), c.clone().multiplyScalar(hero ? 2.0 : 1.0), (c === PINK ? CYAN : PINK).clone().multiplyScalar(0.35));
+        glow(a.x + a.nx * 1.2, 0.02, a.z + a.nz * 1.2, 2.6, c, hero ? 0.12 : 0.07);
+      }
+    }
+    for (const k of ['aCell', 'aColA', 'aColB', 'aPhase']) bl.geometry.attributes[k].needsUpdate = true;
+    C.stats.blades = bl.count;
+  }
+
+  // ---------------- plaza signature: count rings round the relays; cut one and the count drops live
+  {
+    const rings = new Map(); let count = 2114, acc = 0;
+    const mk = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256; const t = new THREE.CanvasTexture(c);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.ShaderMaterial({ uniforms: { tMap: { value: t }, uDecay: { value: 0 }, uTime: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+        vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform sampler2D tMap; uniform float uDecay; uniform float uTime; varying vec2 vU; float hs(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); } void main(){ vec2 cell = floor(vU * 48.0); float h = hs(cell + floor(uTime * 4.0)); if (h < uDecay) discard; vec4 tx = texture2D(tMap, (cell + 0.5) / 48.0 * step(0.01, uDecay) + vU * (1.0 - step(0.01, uDecay))); gl_FragColor = vec4(vec3(1.0, 0.6, 0.12) * tx.r * 0.6 * (h < uDecay + 0.12 ? 3.0 : 1.0), 1.0); }' }));
+      m.rotation.x = -Math.PI / 2; m.renderOrder = 3; scene.add(m); wet.hide.push(m);
+      return { m, c, t, shown: -1, decay: 0 };
+    };
+    const paint = (r, n) => {
+      const x = r.c.getContext('2d'); x.clearRect(0, 0, 256, 256); x.strokeStyle = x.fillStyle = '#f00';
+      x.lineWidth = 3; x.beginPath(); x.arc(128, 128, 120, 0, 6.3); x.stroke(); x.lineWidth = 1.5; x.beginPath(); x.arc(128, 128, 112, 0, 6.3); x.stroke();
+      for (let k = 0; k < 60; k++) { const a = k / 60 * 6.283, l = k % 5 ? 4 : 9; x.beginPath(); x.moveTo(128 + Math.cos(a) * 112, 128 + Math.sin(a) * 112); x.lineTo(128 + Math.cos(a) * (112 - l), 128 + Math.sin(a) * (112 - l)); x.stroke(); }
+      x.font = 'bold 20px "Courier New", monospace'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(`COUNT ${n.toLocaleString('en-US')} / 2,114`, 128, 214);
+      r.t.needsUpdate = true; r.shown = n;
+    };
+    C.ticks.push((dt, t) => {
+      const list = G.relays || [];
+      for (const [R2, r] of rings) if (!list.includes(R2)) { scene.remove(r.m); r.m.material.dispose(); r.t.dispose(); rings.delete(R2); }
+      const cut = list.filter(R2 => !R2.alive).length;
+      if (!cut) count = 2114; else { acc += dt; while (acc > 0.4) { acc -= 0.4; count = Math.max(2114 - 37 * cut, count - cut); } }
+      for (const R2 of list) {
+        let r = rings.get(R2); if (!r) { r = mk(); rings.set(R2, r); r.m.position.set(R2.x, 0.02, R2.z); }
+        if (!R2.alive) r.decay = Math.min(1.05, r.decay + dt / 1.2);
+        r.m.material.uniforms.uDecay.value = r.decay; r.m.material.uniforms.uTime.value = t; r.m.visible = r.decay < 1.05;
+        if (r.shown !== count && R2.alive) paint(r, count);
+      }
+    });
+  }
+
   // ---------------- 6. flying traffic under the camera: delivery drones (cyan/pink, never amber) and spinners
   const fliers = [];
   {
@@ -537,6 +826,7 @@ export function makeCyber(scene, level, wet, world) {
     const t = G.rt || 0;
     for (const m of C.mats) { if (m.uniforms.uTime) m.uniforms.uTime.value = t; if (m.uniforms.uHero && hero) m.uniforms.uHero.value.copy(hero); }
     flyUpdate(dt, center);
+    for (const f of C.ticks) f(dt, t);
     tags.update(dt);
     fx.update(dt);
   };

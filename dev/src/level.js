@@ -209,7 +209,7 @@ function pbr(prefix, rx, ry, extra = {}) {
 
 // ---------- level ----------
 export function buildLevel(scene, world, wet) {
-  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [], fades: [], roofs: [] };
+  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [], fades: [], roofs: [], lampPosts: [] };
   // Every lamp, neon and lantern registers a light "spot"; only the POOL nearest the camera get a real
   // point light each frame, so the shader cost stays flat however big the world gets.
   const spots = L.spots;
@@ -403,7 +403,7 @@ export function buildLevel(scene, world, wet) {
   });
   const lampSpots = [[-9.4, -17], [9.4, -5], [-9.4, 7], [9.4, 18], [-9.4, -26 + 4], [9.4, -24]];
   for (const [lx, lz] of lampSpots) {
-    const lamp = lampSrc.clone(); lamp.position.set(lx, 0, lz); lamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(lamp);
+    const lamp = lampSrc.clone(); lamp.position.set(lx, 0, lz); lamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(lamp); L.lampPosts.push([lx, lz]);
     addSpot(lx, 3.45, lz, 0xffbf80, 32, 16, 1.5);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(2.0, 1.4, 0.8), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     halo.position.set(lx, 3.55, lz); halo.scale.setScalar(0.35); scene.add(halo);
@@ -875,7 +875,7 @@ function buildExpansion(C, H) {
   // dark fill under the east of the city so nothing shows through the gaps
   { const f = new THREE.Mesh(new THREE.PlaneGeometry(110, 200), new THREE.MeshStandardMaterial({ color: 0x0f1013, roughness: 1 })); f.rotation.x = -Math.PI / 2; f.position.set(45, -0.03, -60); scene.add(f); wet.hide.push(f); }
   const lampPost = (x, z, ry = 0) => {
-    const lamp = lampSrc.clone(); lamp.position.set(x, 0, z); lamp.rotation.y = ry; lamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(lamp);
+    const lamp = lampSrc.clone(); lamp.position.set(x, 0, z); lamp.rotation.y = ry; lamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(lamp); L.lampPosts.push([x, z]);
     addSpot(x, 3.45, z, 0xffbf80, 30, 15, 1.5);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(2.0, 1.4, 0.8), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); halo.position.set(x, 3.55, z); halo.scale.setScalar(0.35); scene.add(halo);
     { const hz = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(0.18, 0.13, 0.08), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); hz.position.set(x, 3.5, z); hz.scale.setScalar(1.8); scene.add(hz); }

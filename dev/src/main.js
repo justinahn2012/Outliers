@@ -2115,7 +2115,7 @@ function updateLocks(dt) {
 }
 
 // ---- Tally relays (Checkpoint Plaza) ----
-const RELAYS = [];
+const RELAYS = []; G.relays = RELAYS;
 const relayMat = new THREE.MeshStandardMaterial({ color: 0x2b2f35, metalness: 0.8, roughness: 0.35 });
 function buildRelays() {
   if (RELAYS.length) return;
@@ -2415,7 +2415,7 @@ function updateCamera(rdt) {
     return;
   }
   const v = hero.body.velocity;
-  const hit = rectOf(hp.x, hp.z, 1.5);
+  const hit = rectOf(hp.x, hp.z, 0) || rectOf(hp.x, hp.z, 1.5);   // the rect she's actually in first: a padded neighbour at a junction would clamp her off-screen
   let cx = hp.x + v.x * 0.18, cz = hp.z - 2.0 + v.z * 0.18;
   if (hit) {
     const r = hit[1], o = r[4] || {};
@@ -2700,6 +2700,8 @@ const PERF = { js: 0, render: 0, rdt: 0 }; window.__perf = PERF;
 boot();
 window.__G = G; // debug hook
 window.__dbg = {
+  snap: () => { camState.init = false; },
+  camPos: () => [camera.position.x, camera.position.y, camera.position.z, camState.look.x, camState.look.z].map(v => Math.round(v * 10) / 10),
   edits: () => EDITS.map(E => E.kind), ageEdits: (t) => { for (const E of EDITS) E.t += t; }, rewriteWorld: (x, y, z) => { toScreen(new THREE.Vector3(x, y, z), _sp); return rewriteAt(99, _sp.x, _sp.y); }, gates: () => level.gates.map(g => [g.pos.x, g.pos.z, g.open]), heat: () => hero.focus,
   wallNear: () => { const hp = heroCenter(); let best = null, bd = 1e9; for (const b of wallBodies()) { const d = boxDistXZ(b, hp); if (d < bd) { bd = d; best = b; } } return best ? [best.position.x, best.position.z, best.shapes[0].halfExtents.x, best.shapes[0].halfExtents.z, bd] : null; },
   toScreen: (x, y, z) => { const o = {}; toScreen({ x, y, z }, o); return [o.x, o.y]; },

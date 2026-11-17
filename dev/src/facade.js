@@ -334,7 +334,7 @@ export function makeFacadeKit(scene, opts) {
       const inside = new THREE.Mesh(new THREE.PlaneGeometry(sw, gh), im); inside.position.copy(at(0, gy, 0.03)); inside.rotation.y = ry; scene.add(inside);
       kit.mats.push(im);
       for (let k = 0; k < nP; k++) pane(at(-sw / 2 + (k + 0.5) * pw, gy, 0.075), ry, pw - 0.05, gh - 0.04, 'shop');
-      kit.shops.push({ p: at(0, 0, 0.1), n, light: new THREE.Color(...K.light), w: sw });
+      kit.shops.push({ p: at(0, 0, 0.1), n, light: new THREE.Color(...K.light), w: sw, kind });
     }
     // fascia: a lightbox with the shop's name
     const fasciaH = 0.62, name = closed ? 'CLOSED' : K.names[Math.floor(rnd() * K.names.length)];
