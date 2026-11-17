@@ -112,11 +112,6 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
   text-shadow: 0 0 16px rgba(155,123,255,0.9); opacity:0; transition: opacity .5s; }
 #place small { display:block; font: 800 9px Inter, sans-serif; letter-spacing:3px; color:#a99fe0; margin-bottom:2px; }
 #place.show { opacity:1; }
-#objarrow { position:absolute; left:0; top:0; width:0; height:0; display:none; }
-#objarrow i { position:absolute; left:-15px; top:-15px; width:30px; height:30px; display:flex; align-items:center; justify-content:center; }
-#objarrow i::before { content:''; width:0; height:0; border-left:9px solid transparent; border-right:9px solid transparent; border-bottom:17px solid #c7b4ff; filter: drop-shadow(0 0 6px rgba(155,123,255,1)); }
-#objarrow span { position:absolute; white-space:nowrap; font: 800 10.5px Inter, sans-serif; letter-spacing:1.4px; color:#fff; background: rgba(10,8,24,0.72); border:1px solid rgba(155,123,255,0.5);
-  padding: 3px 7px; border-radius:7px; transform: translate(-50%, -50%); }
 #bigmap { position:fixed; inset:0; background: rgba(4,4,12,0.97); display:flex; flex-direction:column; align-items:center; z-index:60; padding: calc(var(--sat) + 14px) 10px calc(var(--sab) + 14px); }
 #bigmap.hidden { display:none; }
 #bigmap h2 { font-family:'Bebas Neue', Impact; font-size:30px; letter-spacing:5px; margin:0; color:#fff; text-shadow: 0 0 20px rgba(155,123,255,0.9); }
@@ -201,7 +196,6 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
   <div id="dlg"><b id="dlgwho"></b><span id="dlgline"></span></div>
   <canvas id="minimap"></canvas><div id="mmcap">TAP FOR MAP</div>
   <div id="place"></div>
-  <div id="objarrow"><i></i><span></span></div>
   <div id="fps"></div>
 </div>
 

@@ -1771,7 +1771,7 @@ function spawnNow(t) {
   return e;
 }
 function setObjective(text, pos, label = null) {
-  G.objective = text ? { text, pos: pos ? pos.clone() : null, label } : null; nav.route = null;
+  G.objective = text ? { text, pos: pos ? pos.clone() : null, label } : null;
   beacon.visible = !!(pos && text);
   if (pos && text) beacon.position.set(pos.x, 0, pos.z);
 }
@@ -1786,40 +1786,16 @@ function updateBeacon(dt) {
 const OPENABLE = ZONES.length - 1;      // gates 0..8 open in order; the last two are permanent Census locks
 
 // ======================= where am I: place names, minimap, route arrow, full map =======================
-// Every zone is a list of rects; rects of one zone that touch are connected, and zones connect through the gates
-// that can open. The guide walks that graph, so the arrow points down the street you have to take, not through walls.
+// Every zone is a list of rects; a rect can carry its own name (TRANSIT SHED). This only tells her where she is;
+// it doesn't point the way.
 const NAV = (() => {
   const R = [];
-  ZONES.forEach((Z, zi) => Z.rects.forEach((r, ri) => R.push({ zi, main: ri === Z.rects.length - 1 || Z.rects.length === 1, x0: r[0], x1: r[1], z0: r[2], z1: r[3], name: (r[4] && r[4].name) || Z.name, links: [] })));
+  ZONES.forEach((Z, zi) => Z.rects.forEach((r, ri) => R.push({ zi, main: ri === Z.rects.length - 1 || Z.rects.length === 1, x0: r[0], x1: r[1], z0: r[2], z1: r[3], name: (r[4] && r[4].name) || Z.name })));
   const at = (x, z, pad = 0.3) => R.find(r => x >= r.x0 - pad && x <= r.x1 + pad && z >= r.z0 - pad && z <= r.z1 + pad) || null;
-  const link = (a, b, x, z) => { a.links.push({ to: b, x, z }); b.links.push({ to: a, x, z }); };
-  for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++) {
-    const a = R[i], b = R[j]; if (a.zi !== b.zi) continue;
-    const ix0 = Math.max(a.x0, b.x0), ix1 = Math.min(a.x1, b.x1), iz0 = Math.max(a.z0, b.z0), iz1 = Math.min(a.z1, b.z1);
-    if (ix1 >= ix0 - 0.6 && iz1 >= iz0 - 0.6) link(a, b, (ix0 + ix1) / 2, (iz0 + iz1) / 2);
-  }
-  GATES.forEach((g, gi) => {
-    if (gi >= OPENABLE) return;
-    const cx = g.alongZ ? g.at : (g.x0 + g.x1) / 2, cz = g.alongZ ? (g.x0 + g.x1) / 2 : g.at, nx = g.alongZ ? 1.5 : 0, nz = g.alongZ ? 0 : 1.5;
-    const a = at(cx - nx, cz - nz, 0), b = at(cx + nx, cz + nz, 0);
-    if (a && b && a !== b) link(a, b, cx, cz);
-  });
   return { R, at, last: null };
 })();
-// the way from here to there: a list of { p, name } (each doorway and the rect it leads into), ending at the target
-function navRoute(from, to, toName) {
-  const a = NAV.at(from.x, from.z, 0) || NAV.last, b = NAV.at(to.x, to.z, 0.8);
-  const end = { p: new THREE.Vector3(to.x, 0, to.z), name: toName };
-  if (!a || !b || a === b) return [end];
-  const prev = new Map([[a, null]]), q = [a];
-  while (q.length) { const r = q.shift(); if (r === b) break; for (const L of r.links) if (!prev.has(L.to)) { prev.set(L.to, { r, L }); q.push(L.to); } }
-  if (!prev.has(b)) return [end];
-  const pts = [end]; let r = b;
-  while (prev.get(r)) { const { r: p, L } = prev.get(r); if (Math.hypot(L.x - pts[0].p.x, L.z - pts[0].p.z) > 0.8) pts.unshift({ p: new THREE.Vector3(L.x, 0, L.z), name: r.name }); r = p; }
-  return pts;
-}
-const nav = { place: null, toastT: 0, route: null, routeT: 0, mmT: 0, open: false, wasPaused: false };
-const mm = $('minimap'), mmx = mm.getContext('2d'), objArrow = $('objarrow'), objLabel = objArrow.querySelector('span'), objIcon = objArrow.querySelector('i');
+const nav = { place: null, toastT: 0, mmT: 0, open: false, wasPaused: false };
+const mm = $('minimap'), mmx = mm.getContext('2d');
 function placeToast(name) {
   const el = $('place'); el.innerHTML = `<small>${ZONES[G.zone] && ZONES[G.zone].name !== name ? ZONES[G.zone].name : 'CANTOR SOUND'}</small>${name}`;
   el.classList.add('show'); nav.toastT = 2.4;
@@ -1829,7 +1805,7 @@ function updateNav(dt) {
   const show = live ? 'block' : 'none';
   if (mm.style.display !== show) { mm.style.display = show; $('mmcap').style.display = show; }
   if (nav.toastT > 0) { nav.toastT -= dt; if (nav.toastT <= 0) $('place').classList.remove('show'); }
-  if (!live) { objArrow.style.display = 'none'; return; }
+  if (!live) return;
   const hp = heroCenter();
   const r = NAV.at(hp.x, hp.z, 0); if (r) NAV.last = r;
   const cur = NAV.last;
@@ -1837,55 +1813,19 @@ function updateNav(dt) {
     const first = nav.place === null; nav.place = cur.name; ui.wave.textContent = cur.name;
     if (!first && bannerT <= 0) placeToast(cur.name);
   }
-  // route to the objective, refreshed a few times a second
-  const O = G.objective;
-  nav.routeT -= dt;
-  if (O && O.pos) { if (nav.routeT <= 0 || !nav.route) { nav.routeT = 0.25; nav.route = navRoute(hp, O.pos, O.label || O.text); } }
-  else nav.route = null;
   nav.mmT -= dt; if (nav.mmT <= 0) { nav.mmT = 0.1; drawMinimap(hp); }
-  if (!nav.route) { objArrow.style.display = 'none'; return; }
-  let k = 0; while (k < nav.route.length - 1 && Math.hypot(nav.route[k].p.x - hp.x, nav.route[k].p.z - hp.z) < 2.5) k++;
-  const wp = nav.route[k];
-  let dist = Math.hypot(wp.p.x - hp.x, wp.p.z - hp.z); for (let j = k + 1; j < nav.route.length; j++) dist += nav.route[j].p.distanceTo(nav.route[j - 1].p);
-  const label = (k < nav.route.length - 1 ? wp.name : (O.label || 'OBJECTIVE')) + ' · ' + Math.round(dist) + 'm';
-  if (objLabel.textContent !== label) objLabel.textContent = label;
-  // on screen: a marker over the spot; off screen: an arrow on the edge pointing down the route
-  toScreen(_v1.set(wp.p.x, 1.2, wp.p.z), _sp);
-  const top = Math.max(G.H * 0.24, 200), bot = G.H - 150, lft = 30, rgt = G.W - 30;
-  const onScreen = _sp.z < 1 && _sp.x > lft && _sp.x < rgt && _sp.y > top && _sp.y < bot;
-  let x, y, ang;
-  if (onScreen && Math.hypot(wp.p.x - hp.x, wp.p.z - hp.z) > 3) { x = _sp.x; y = _sp.y; ang = Math.PI; objLabel.style.left = '0px'; objLabel.style.top = '-30px'; }
-  else {
-    toScreen(_v2.set(hp.x, 1, hp.z), _v3);
-    const hx = clamp(_v3.x, lft, rgt), hy = clamp(_v3.y, top, bot);
-    let dx = wp.p.x - hp.x, dy = wp.p.z - hp.z; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;   // screen-up is world -Z
-    const tx = dx > 0 ? (rgt - hx) / dx : dx < 0 ? (lft - hx) / dx : 1e9, ty = dy > 0 ? (bot - hy) / dy : dy < 0 ? (top - hy) / dy : 1e9;
-    const t = Math.min(tx, ty, Math.max(60, Math.min(G.W, G.H) * 0.34));
-    x = hx + dx * t; y = hy + dy * t; ang = Math.atan2(dx, -dy);
-    objLabel.style.left = (-dx * 24 + (x > G.W - 90 ? -40 : x < 90 ? 40 : 0)) + 'px'; objLabel.style.top = (-dy * 24 + (dy > 0.5 ? -14 : 14)) + 'px';
-  }
-  objArrow.style.display = 'block';
-  objArrow.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-  objIcon.style.transform = `rotate(${ang.toFixed(3)}rad)`;
 }
 function rectFill(r, big) {
   if (r.zi === G.zone) return big ? 'rgba(155,123,255,0.45)' : 'rgba(155,123,255,0.5)';
   if (r.zi < G.zone) return 'rgba(205,200,235,0.24)';
   return big ? 'rgba(205,200,235,0.1)' : 'rgba(205,200,235,0.12)';
 }
-function drawRouteAndMarks(c, X, Y, hp, s) {
+function drawMarks(c, X, Y, hp, s) {
   for (let gi = 0; gi < GATES.length; gi++) {
     const g = GATES[gi], lv = level.gates[gi]; if (!lv || lv.open) continue;
     c.strokeStyle = gi >= OPENABLE ? 'rgba(255,90,60,0.9)' : 'rgba(255,150,40,1)'; c.lineWidth = 2.2 * s; c.beginPath();
     if (g.alongZ) { c.moveTo(X(g.at), Y(g.x0)); c.lineTo(X(g.at), Y(g.x1)); } else { c.moveTo(X(g.x0), Y(g.at)); c.lineTo(X(g.x1), Y(g.at)); }
     c.stroke();
-  }
-  if (nav.route) {
-    c.strokeStyle = 'rgba(205,185,255,0.95)'; c.lineWidth = 1.8 * s; c.setLineDash([3 * s, 3 * s]); c.beginPath(); c.moveTo(X(hp.x), Y(hp.z));
-    for (const w of nav.route) c.lineTo(X(w.p.x), Y(w.p.z));
-    c.stroke(); c.setLineDash([]);
-    const e = nav.route[nav.route.length - 1].p, pr = (3 + 2 * (0.5 + 0.5 * Math.sin(G.rt * 5))) * s;
-    c.fillStyle = '#d9c9ff'; c.beginPath(); c.arc(X(e.x), Y(e.z), pr, 0, 6.29); c.fill();
   }
   c.fillStyle = 'rgba(255,80,90,0.95)';
   for (const e of G.enemies) if (e.alive && !e.dead) { c.beginPath(); c.arc(X(e.body.position.x), Y(e.body.position.z), 1.8 * s, 0, 6.29); c.fill(); }
@@ -1902,7 +1842,7 @@ function drawMinimap(hp) {
   c.save(); c.beginPath(); c.roundRect ? c.roundRect(0, 0, S, S, 13) : c.rect(0, 0, S, S); c.clip();
   const X = (x) => S / 2 + (x - hp.x) * k, Y = (z) => S / 2 + (z - hp.z) * k;
   for (const r of NAV.R) { c.fillStyle = rectFill(r, false); c.fillRect(X(r.x0), Y(r.z0), (r.x1 - r.x0) * k, (r.z1 - r.z0) * k); }
-  drawRouteAndMarks(c, X, Y, hp, 1);
+  drawMarks(c, X, Y, hp, 1);
   c.restore();
   c.fillStyle = 'rgba(220,210,255,0.8)'; c.font = '800 8px Inter, sans-serif'; c.textAlign = 'center'; c.fillText('N', S / 2, 9);
 }
@@ -1919,7 +1859,7 @@ function drawBigMap() {
     c.strokeStyle = r.zi === G.zone ? 'rgba(200,180,255,0.9)' : 'rgba(200,195,235,0.25)'; c.lineWidth = 1; c.strokeRect(X(r.x0) + 0.5, Y(r.z0) + 0.5, (r.x1 - r.x0) * k - 1, (r.z1 - r.z0) * k - 1);
   }
   const hp = heroCenter();
-  drawRouteAndMarks(c, X, Y, hp, 1.6);
+  drawMarks(c, X, Y, hp, 1.6);
   // names, written along long thin streets
   for (const r of NAV.R) {
     const w = (r.x1 - r.x0) * k, h = (r.z1 - r.z0) * k, cx = X((r.x0 + r.x1) / 2), cz = Y((r.z0 + r.z1) / 2);
