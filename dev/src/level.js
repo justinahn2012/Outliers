@@ -189,7 +189,7 @@ function pbr(prefix, rx, ry, extra = {}) {
 
 // ---------- level ----------
 export function buildLevel(scene, world, wet) {
-  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [] };
+  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [], fades: [] };
   // Every lamp, neon and lantern registers a light "spot"; only the POOL nearest the camera get a real
   // point light each frame, so the shader cost stays flat however big the world gets.
   const spots = L.spots;
@@ -240,6 +240,53 @@ export function buildLevel(scene, world, wet) {
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x1c1d20, roughness: 0.6, metalness: 0.4 });
   const winGeo = new THREE.PlaneGeometry(1.15, 1.6), frameGeo = new THREE.BoxGeometry(1.35, 1.8, 0.08);
   const winsDark = [], winsLit = [];
+
+  // ---- roofs: tar surface (tiled by world size), a parapet, and real rooftop kit instead of one stretched slab ----
+  const roofTex = (() => {
+    const [c, x] = canvas(256, 256);
+    x.fillStyle = '#3b3c40'; x.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 2600; i++) { const v = 40 + Math.random() * 40 | 0; x.fillStyle = `rgba(${v},${v},${v + 3},0.55)`; x.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+    x.strokeStyle = 'rgba(12,12,14,0.8)'; x.lineWidth = 3; for (let k = 0; k <= 256; k += 128) { x.beginPath(); x.moveTo(0, k); x.lineTo(256, k); x.stroke(); }
+    for (let i = 0; i < 6; i++) { x.fillStyle = 'rgba(70,72,78,0.18)'; x.beginPath(); x.ellipse(Math.random() * 256, Math.random() * 256, 20 + Math.random() * 40, 10 + Math.random() * 20, Math.random() * 3, 0, 6.28); x.fill(); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+  })();
+  const tarMat = new THREE.MeshStandardMaterial({ map: roofTex, roughness: 0.82, metalness: 0.05, envMapIntensity: 0.6 });
+  const parapetMat = pbr('concrete_wall_008', 1, 1);
+  const acMat = new THREE.MeshStandardMaterial({ color: 0x8a8f94, roughness: 0.45, metalness: 0.7 }), grilleMat = new THREE.MeshStandardMaterial({ color: 0x1a1c1f, roughness: 0.7, metalness: 0.5 });
+  const pipeMat = new THREE.MeshStandardMaterial({ color: 0x5d6166, roughness: 0.5, metalness: 0.75 }), tankMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2c, roughness: 0.85 });
+  const skyMat = new THREE.MeshStandardMaterial({ color: 0x0a0d12, roughness: 0.1, metalness: 0.8, envMapIntensity: 1.4 }), skyLit = new THREE.MeshStandardMaterial({ color: 0x050505, emissive: 0xffc890, emissiveIntensity: 0.55, roughness: 0.2 });
+  const scaleUV = (geo, su, sv) => { const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv); return geo; };
+  const roofTop = (x0, x1, z0, z1, h) => {
+    const w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    const top = new THREE.Mesh(scaleUV(new THREE.PlaneGeometry(w, d), w / 6, d / 6), tarMat); top.rotation.x = -Math.PI / 2; top.position.set(cx, h + 0.015, cz); top.receiveShadow = true; scene.add(top);
+    const T = 0.28, PH = 0.75;
+    for (const [px, pz, sx, sz] of [[cx, z0 + T / 2 - 0.12, w + 0.24, T], [cx, z1 - T / 2 + 0.12, w + 0.24, T], [x0 + T / 2 - 0.12, cz, T, d], [x1 - T / 2 + 0.12, cz, T, d]]) {
+      const len = Math.max(sx, sz), g = scaleUV(new THREE.BoxGeometry(sx, PH, sz), len / 3, PH / 3);
+      const m = new THREE.Mesh(g, parapetMat); m.position.set(px, h + PH / 2, pz); m.castShadow = true; m.receiveShadow = true; scene.add(m);
+    }
+    const area = w * d, inner = (k) => [x0 + 1.4 + rnd() * Math.max(0.1, w - 2.8), z0 + 1.4 + rnd() * Math.max(0.1, d - 2.8)];
+    for (let k = 0; k < Math.min(4, 1 + Math.floor(area / 90)); k++) {            // condenser units with a fan grille
+      const [ax, az] = inner(); const s = 0.9 + rnd() * 0.6, ry = rnd() < 0.5 ? 0 : Math.PI / 2;
+      const u = new THREE.Mesh(new THREE.BoxGeometry(s * 1.3, s * 0.75, s), acMat); u.position.set(ax, h + s * 0.375, az); u.rotation.y = ry; u.castShadow = true; scene.add(u);
+      const fan = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.32, s * 0.32, 0.03, 16), grilleMat); fan.position.set(ax, h + s * 0.76, az); scene.add(fan);
+    }
+    for (let k = 0; k < 2 + Math.floor(area / 160); k++) {                          // vent stacks
+      const [vx, vz] = inner(); const ph = 0.6 + rnd() * 0.9;
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, ph, 8), pipeMat); p.position.set(vx, h + ph / 2, vz); scene.add(p);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.12, 0.1, 8), pipeMat); cap.position.set(vx, h + ph + 0.05, vz); scene.add(cap);
+    }
+    { const [hx, hz] = inner(); const hb = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 1.1), grilleMat); hb.position.set(hx, h + 0.25, hz); scene.add(hb); }   // roof hatch
+    if (area > 110 && rnd() < 0.6) {                                                 // skylight, sometimes lit from below
+      const [sx2, sz2] = inner(); const sw = 1.6 + rnd() * 1.4, sd = 1.2 + rnd() * 1.0;
+      const sk = new THREE.Mesh(new THREE.BoxGeometry(sw, 0.3, sd), rnd() < 0.5 ? skyLit : skyMat); sk.position.set(sx2, h + 0.15, sz2); scene.add(sk);
+    }
+    if (area > 200 && rnd() < 0.5) {                                                 // old timber water tank on legs
+      const [tx, tz] = inner();
+      const tk = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.05, 1.8, 14), tankMat); tk.position.set(tx, h + 1.9, tz); tk.castShadow = true; scene.add(tk);
+      const lid = new THREE.Mesh(new THREE.ConeGeometry(1.1, 0.6, 14), tankMat); lid.position.set(tx, h + 3.1, tz); scene.add(lid);
+      for (const [lx, lz] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.1), pipeMat); leg.position.set(tx + lx, h + 0.5, tz + lz); scene.add(leg); }
+    }
+  };
   const bldg = (x0, x1, z0, z1, h, axis) => {
     const w = x1 - x0, d = z1 - z0;
     const faceW = axis === 'x' ? d : w;
@@ -265,13 +312,7 @@ export function buildLevel(scene, world, wet) {
     sf.position.set(axis === 'x' ? fx : (x0 + x1) / 2, 1.7, axis === 'x' ? (z0 + z1) / 2 + (rnd() - 0.5) * 2 : fz); sf.rotation.y = ry; scene.add(sf);
     const awn = new THREE.Mesh(new THREE.BoxGeometry(Math.min(faceW - 2, 7) + 0.4, 0.08, 1.0), new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(rnd(), 0.4, 0.18), roughness: 0.8 }));
     awn.position.copy(sf.position); awn.position.y = 3.25; awn.rotation.y = ry; awn.translateZ(0.5); awn.rotation.x = 0; scene.add(awn);
-    for (let k = 0; k < 3; k++) {
-      const s = 0.8 + rnd() * 1.6;
-      const box = new THREE.Mesh(new THREE.BoxGeometry(s, s * 0.7, s * 1.2), new THREE.MeshStandardMaterial({ color: 0x4a4d52, roughness: 0.5, metalness: 0.6 }));
-      box.position.set(x0 + 1.5 + rnd() * (w - 3), h + s * 0.35, z0 + 1.5 + rnd() * (d - 3)); scene.add(box);
-    }
-    const ledge = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.4, d + 0.3), pbr('concrete_wall_008', (w + d) / 4, 0.3));
-    ledge.position.set((x0 + x1) / 2, h + 0.2, (z0 + z1) / 2); scene.add(ledge);
+    roofTop(x0, x1, z0, z1, h);
   };
   const block = (x0, x1, z0, z1, h, faces, opts = {}) => {
     const w = x1 - x0, d = z1 - z0;
@@ -301,13 +342,7 @@ export function buildLevel(scene, world, wet) {
       const awn = new THREE.Mesh(new THREE.BoxGeometry(sw + 0.4, 0.08, 1.0), new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(rnd(), 0.4, 0.18), roughness: 0.8 }));
       awn.position.copy(sf.position); awn.position.y = 3.25; awn.rotation.y = ry; awn.translateZ(0.5); scene.add(awn);
     }
-    const ledge = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.4, d + 0.3), pbr('concrete_wall_008', (w + d) / 4, 0.3));
-    ledge.position.set((x0 + x1) / 2, h + 0.2, (z0 + z1) / 2); scene.add(ledge);
-    for (let k = 0; k < Math.min(4, Math.floor(w * d / 120) + 1); k++) {
-      const sz = 0.8 + rnd() * 1.6;
-      const bx = new THREE.Mesh(new THREE.BoxGeometry(sz, sz * 0.7, sz * 1.2), new THREE.MeshStandardMaterial({ color: 0x4a4d52, roughness: 0.5, metalness: 0.6 }));
-      bx.position.set(x0 + 1.5 + rnd() * Math.max(0.1, w - 3), h + sz * 0.35, z0 + 1.5 + rnd() * Math.max(0.1, d - 3)); scene.add(bx);
-    }
+    roofTop(x0, x1, z0, z1, h);
   };
   seed = 4242;
   [[-27, -17.5, 15], [-15.5, -3.5, 11], [-1.5, 11, 17], [13, 25, 10]].forEach(([z0, z1, h]) => bldg(-28, -12.7, z0, z1, h, 'x'));
@@ -439,6 +474,7 @@ export function buildLevel(scene, world, wet) {
     }
     for (const g of L.gates) g.update(dt);
     if (L.archFade) L.archFade(center);
+    for (const F of L.fades) { const t = F.test(center) ? F.low : 1; for (const m of F.mats) { m.opacity += (t - m.opacity) * 0.12; m.transparent = m.opacity < 0.99; m.depthWrite = m.opacity > 0.6; } for (const o of F.objs) o.visible = F.mats[0].opacity > 0.03; }
     if (L.updateExtra) L.updateExtra(dt, center);
     rainMat.uniforms.uTime.value += dt; rainMat.uniforms.uCenter.value.copy(center);
     wet.uniforms.uTime.value += dt;
@@ -814,9 +850,14 @@ function buildExpansion(C, H) {
     mesh(new THREE.SphereGeometry(1.25, 10, 8), leaf, px, 3.2, pz, 0);
   }
   for (const [bx, bz, r] of [[46, -2.5, 0], [46, -23.5, 0]]) { mesh(new THREE.BoxGeometry(2.4, 0.45, 0.6), counterMat, bx, 0.45, bz, r); stat(bx, 0.3, bz, 1.2, 0.3, 0.3, r); }
-  mesh(new THREE.BoxGeometry(5.6, 0.12, 2.2), metal, 47, 2.8, -28.6, 0); mesh(new THREE.BoxGeometry(5.4, 2.6, 0.06), glassBooth, 47, 1.4, -29.6, 0, false);
-  for (const sx of [44.4, 49.6]) mesh(new THREE.BoxGeometry(0.12, 2.8, 0.12), metal, sx, 1.4, -27.6, 0);
-  sign('TRAM · LINE 3 · PIER', '#e8f0ff', false, 47, 3.3, -27.5, 0, 4.4, 0.55);
+  { // tram shelter: it sits between the camera and the tram line, so it fades while she's on the line
+    const sm = metal.clone(), sg = glassBooth.clone();
+    const o = [mesh(new THREE.BoxGeometry(5.6, 0.12, 2.2), sm, 47, 2.8, -28.6, 0), mesh(new THREE.BoxGeometry(5.4, 2.6, 0.06), sg, 47, 1.4, -29.6, 0, false)];
+    for (const sx of [44.4, 49.6]) o.push(mesh(new THREE.BoxGeometry(0.12, 2.8, 0.12), sm, sx, 1.4, -27.6, 0));
+    const sgn = sign('TRAM · LINE 3 · PIER', '#e8f0ff', false, 47, 3.3, -27.5, 0, 4.4, 0.55);
+    const mats = [sm, sg]; for (const q of sgn) if (q) { q.material = q.material.clone(); mats.push(q.material); o.push(q); }
+    L.fades.push({ objs: o, mats, low: 0.12, test: (c) => c.x > 43 && c.x < 51 && c.z < -30.2 });
+  }
   for (const [lx, lz] of [[33, -3], [59, -3], [33, -27], [59, -27]]) lampPost(lx, lz);
 
   // ================= TRAM CUT =================
@@ -849,12 +890,23 @@ function buildExpansion(C, H) {
   const frostFloor = floor('pavement_03', -30, -7.6, -64.4, -46, 2.0, 0.55, 0.35);
   frostFloor.material.color = new THREE.Color(0.75, 0.85, 1.0);
   block(-50, -30, -66, -44, 14, []);
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x8c949c, roughness: 0.85, metalness: 0.1 });
-  const cw = (x0, x1, z0, z1, h = 4.6) => { mesh(new THREE.BoxGeometry(x1 - x0, h, z1 - z0), wallMat, (x0 + x1) / 2, h / 2, (z0 + z1) / 2, 0); stat((x0 + x1) / 2, h / 2, (z0 + z1) / 2, (x1 - x0) / 2, h / 2, (z1 - z0) / 2); };
+  // insulated freezer panels: vertical seams, frost along the bottom, grime, a painted stripe
+  const panelTex = tex2((x, w, h) => {
+    x.fillStyle = '#9aa3ab'; x.fillRect(0, 0, w, h);
+    const g = x.createLinearGradient(0, h, 0, h * 0.55); g.addColorStop(0, 'rgba(235,245,255,0.55)'); g.addColorStop(1, 'rgba(235,245,255,0)'); x.fillStyle = g; x.fillRect(0, h * 0.55, w, h * 0.45);
+    for (let i = 0; i < 400; i++) { x.fillStyle = `rgba(40,45,50,${Math.random() * 0.06})`; x.fillRect(Math.random() * w, Math.random() * h, 3 + Math.random() * 20, 2 + Math.random() * 30); }
+    x.fillStyle = 'rgba(30,34,38,0.9)'; for (let k = 0; k <= w; k += w / 4) x.fillRect(k - 2, 0, 3, h);
+    x.fillStyle = 'rgba(255,255,255,0.18)'; for (let k = 0; k <= w; k += w / 4) x.fillRect(k + 1, 0, 1, h);
+    x.fillStyle = '#2d5d8a'; x.fillRect(0, h * 0.62, w, h * 0.05);
+  }, 256, 256);
+  panelTex.wrapS = THREE.RepeatWrapping;
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: panelTex, roughness: 0.7, metalness: 0.15 });
+  const panelGeo = (w, h, d) => { const g = new THREE.BoxGeometry(w, h, d), uv = g.attributes.uv, len = Math.max(w, d); for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * len / 4.8); return g; };
+  const cw = (x0, x1, z0, z1, h = 4.6) => { mesh(panelGeo(x1 - x0, h, z1 - z0), wallMat, (x0 + x1) / 2, h / 2, (z0 + z1) / 2, 0); stat((x0 + x1) / 2, h / 2, (z0 + z1) / 2, (x1 - x0) / 2, h / 2, (z1 - z0) / 2); };
   cw(-30.4, -30, -64.4, -46); cw(-30.4, -7.6, -46.4, -46); cw(-30.4, -7.6, -64.4, -64.0);
   cw(-7.9, -7.6, -64.4, -58); cw(-7.9, -7.6, -52, -46);
   // the market-facing facade above the loading door
-  mesh(new THREE.BoxGeometry(0.3, 3.2, 6), wallMat, -7.75, 6.2, -55, 0, false);
+  mesh(panelGeo(0.3, 3.2, 6), wallMat, -7.75, 6.2, -55, 0, false);
   sign('COLD STORAGE · NO ENTRY', '#bfe0ff', false, -7.58, 5.2, -55, Math.PI / 2, 5.2, 0.6);
   // racks with ice crates
   for (const rz of [-50, -55.5]) for (const rx of [-26, -19.5]) {

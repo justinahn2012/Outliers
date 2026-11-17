@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { G, GRP, ALL, clamp, damp } from './state.js';
-import { makeCharacter, findBone, blobShadow } from './assets.js';
+import { makeCharacter, findBone, blobShadow, addRim } from './assets.js';
 import { sharedHaloTexture } from './powers.js';
 
 // Null (Iris Calloway) — a real rigged, motion-captured actor (charcoal leather, silver hair),
@@ -20,6 +20,8 @@ export function createHero() {
   };
   // hair material: a little emissive lift so the silver reads at night
   for (const m of c.mats) if (m.alphaTest > 0 || /opacity/.test(m.name)) { m.color.setRGB(0.78, 0.82, 0.95); m.emissive = new THREE.Color(0x8a90b0); m.emissiveIntensity = 0.06; }
+  // her signature: a violet edge, so she reads at a glance against black-clad Census
+  for (const m of c.mats) if (!(m.alphaTest > 0)) addRim(m, 0x8f6bff, 0.38, 3.0);
 
   const U = { uTime: { value: 0 }, uPower: { value: 0 }, uFlow: { value: new THREE.Vector2() } };
   // Floating silver locks — her "still underwater" signature. Thin, hashed-alpha strands that drift.
@@ -168,6 +170,31 @@ export function aimArm(upper, fore, hand, target, w, straighten = 0.55) {
   upper.quaternion.slerp(_q2, clamp(w, 0, 1));
   // straighten the elbow toward the target as weight rises
   if (straighten > 0) fore.quaternion.slerp(_q.identity(), clamp(w * straighten, 0, 1));
+}
+
+// Two-bone IK: put the hand on target with the elbow bent toward pole (all world space).
+const _S = new THREE.Vector3(), _E0 = new THREE.Vector3(), _H0 = new THREE.Vector3(), _E = new THREE.Vector3(), _dir = new THREE.Vector3(), _pd = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
+function aimBoneAt(bone, from, to, w) {
+  _q.setFromUnitVectors(from.normalize(), to.normalize());
+  bone.getWorldQuaternion(_wq);
+  _q2.copy(_q).multiply(_wq);
+  bone.parent.getWorldQuaternion(_pq).invert();
+  _q2.premultiply(_pq);
+  bone.quaternion.slerp(_q2, clamp(w, 0, 1));
+  bone.updateMatrixWorld(true);
+}
+export function twoBoneIK(upper, fore, hand, target, pole, w = 1) {
+  if (!upper || !fore || !hand || w <= 0.001) return;
+  upper.getWorldPosition(_S); fore.getWorldPosition(_E0); hand.getWorldPosition(_H0);
+  const a = _S.distanceTo(_E0), b = _E0.distanceTo(_H0);
+  const d = clamp(_S.distanceTo(target), 0.02, (a + b) * 0.999);
+  _dir.copy(target).sub(_S).normalize();
+  const x = (a * a - b * b + d * d) / (2 * d), h = Math.sqrt(Math.max(0, a * a - x * x));
+  _pd.copy(pole).sub(_S); _pd.addScaledVector(_dir, -_pd.dot(_dir)); if (_pd.lengthSq() < 1e-6) _pd.set(0, -1, 0); _pd.normalize();
+  _E.copy(_S).addScaledVector(_dir, x).addScaledVector(_pd, h);
+  aimBoneAt(upper, _a.copy(_E0).sub(_S), _b.copy(_E).sub(_S), w);
+  fore.getWorldPosition(_E0); hand.getWorldPosition(_H0);
+  aimBoneAt(fore, _a.copy(_H0).sub(_E0), _b.copy(target).sub(_E0), w);
 }
 
 export function blendLocomotion(c, speed, dt, walkRef = 1.45, runRef = 5.2) {

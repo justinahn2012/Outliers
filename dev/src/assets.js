@@ -7,7 +7,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 // motion-capture clips (Microsoft Rocketbox, MIT), heavy armour unit (Mixamo Vanguard).
 export const A = { gltf: {}, clips: {}, tex: {}, env: null, ready: false };
 
-const MODELS = ['iris', 'counter', 'marksman', 'auditor', 'trashcan', 'barrel_red', 'barrel_blue', 'crate', 'barrier', 'covered_car',
+const MODELS = ['iris', 'counter', 'marksman', 'auditor', 'civ_m', 'civ_f', 'trashcan', 'barrel_red', 'barrel_blue', 'crate', 'barrier', 'covered_car',
   'utility_box', 'trashbag', 'cardboard', 'hydrant', 'street_lamp', 'fire_barrel'];
 const ANIMS = ['f_idle_neutral_01', 'f_walk_cool_01', 'f_run_fast_01', 'm_idle_neutral_01', 'm_walk_cool_01', 'm_run_fast_01'];
 const TEXTURES = ['asphalt_02_d', 'asphalt_02_n', 'asphalt_02_arm', 'pavement_03_d', 'pavement_03_n', 'pavement_03_arm',
@@ -99,6 +99,20 @@ export function makeCharacter(key, clipKeys) {
   const bones = {};
   obj.traverse(o => { if (o.isBone || o.type === 'Bone' || /Bip01|mixamorig/.test(o.name)) bones[o.name] = o; });
   return { obj, mixer, actions, bones, mats };
+}
+
+// A fresnel rim in emissive: readable silhouettes from the top-down camera (violet on Null, amber on the Census)
+export function addRim(mat, color, k = 0.6, pw = 2.4) {
+  const u = { uRimCol: { value: new THREE.Color(color) }, uRimK: { value: k }, uRimP: { value: pw } };
+  mat.userData.rim = u;
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 uRimCol; uniform float uRimK; uniform float uRimP;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ float fr = 1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0); totalEmissiveRadiance += uRimCol * pow(fr, uRimP) * uRimK; }');
+  };
+  mat.customProgramCacheKey = () => 'rim';
+  mat.needsUpdate = true;
 }
 
 let _blob = null;

@@ -1207,7 +1207,7 @@ function updateEnemy(e, dt) {
     } else if (e.dead) { return; }
     else {
       e.yaw = Math.atan2(nx, nz);
-      want = aiBrain(e, dt, dist, nx, nz, hp);
+      want = G.booth ? (e.boothState ? (e.state = e.boothState, e.stateT = 0.2, [0, 0]) : [0, 0]) : aiBrain(e, dt, dist, nx, nz, hp);
     }
     if (want && b.fixedRotation) {
       // separation
@@ -2149,8 +2149,9 @@ function updateCageDoors() {
 const CIVS = [];
 function makeCiv(x, z, i) {
   const fem = i % 2 === 1;
-  const c = makeCharacter(fem ? 'marksman' : 'counter', fem ? { idle: 'f_idle_neutral_01', walk: 'f_walk_cool_01', run: 'f_run_fast_01' } : { idle: 'm_idle_neutral_01', walk: 'm_walk_cool_01', run: 'm_run_fast_01' });
-  for (const m of c.mats) if (m.color) m.color.multiply(new THREE.Color(...[[1.5, 1.2, 0.9], [1.1, 1.3, 1.4], [1.6, 1.0, 0.8], [1.2, 1.2, 1.0]][i % 4]));
+  // Moth's uncounted: ordinary people in ordinary clothes (no chips, no Census kit)
+  const c = makeCharacter(fem ? 'civ_f' : 'civ_m', fem ? { idle: 'f_idle_neutral_01', walk: 'f_walk_cool_01', run: 'f_run_fast_01' } : { idle: 'm_idle_neutral_01', walk: 'm_walk_cool_01', run: 'm_run_fast_01' });
+  for (const m of c.mats) if (m.color && !(m.alphaTest > 0) && /body/.test(m.name)) m.color.multiply(new THREE.Color(...[[1, 1, 1], [1, 1, 1], [1.12, 0.95, 0.85], [0.85, 0.95, 1.1]][i % 4]));
   const root = new THREE.Group(); root.add(c.obj); c.obj.position.y = 0; scene.add(root);
   root.position.set(x, 0, z); root.rotation.y = 0;
   const v = { c, root, state: 'caged', t: 0, path: [[x, z + 2.4], [-10.5, -55], [-6, -55], [-2, -48], [-1, -40]], wi: 0, fade: 1 };
@@ -2346,6 +2347,7 @@ function resetGame() {
 // ======================= camera =======================
 const camState = { look: new THREE.Vector3(0, 0, 8), init: false, dist: 20, orbit: 0 };
 function updateCamera(rdt) {
+  if (G.camOverride) { const o = G.camOverride; camera.position.set(o[0], o[1], o[2]); camera.lookAt(o[3], o[4], o[5]); return; }   // debug photo booth
   const hp = heroCenter();
   const aspect = G.W / G.H;
   const fov = THREE.MathUtils.degToRad(camera.fov);
@@ -2655,6 +2657,9 @@ window.__dbg = {
   edits: () => EDITS.map(E => E.kind), ageEdits: (t) => { for (const E of EDITS) E.t += t; }, rewriteWorld: (x, y, z) => { toScreen(new THREE.Vector3(x, y, z), _sp); return rewriteAt(99, _sp.x, _sp.y); }, gates: () => level.gates.map(g => [g.pos.x, g.pos.z, g.open]), heat: () => hero.focus,
   wallNear: () => { const hp = heroCenter(); let best = null, bd = 1e9; for (const b of wallBodies()) { const d = boxDistXZ(b, hp); if (d < bd) { bd = d; best = b; } } return best ? [best.position.x, best.position.z, best.shapes[0].halfExtents.x, best.shapes[0].halfExtents.z, bd] : null; },
   toScreen: (x, y, z) => { const o = {}; toScreen({ x, y, z }, o); return [o.x, o.y]; },
+  cam: (...o) => { G.camOverride = o.length ? o : null; },
+  freeze: (on) => { for (const e of G.enemies) { e.atkCD = on ? 999 : 1; } G.booth = !!on; },
+  pose: (i, st) => { const e = G.enemies[i]; if (e) e.boothState = st; },
   spawn: (t, x, z) => { const e = spawnEnemy(t, x, z); attach(e); return G.enemies.length; },
   zone: (i) => { syncUnlocksForCheckpoint(i); for (const e of [...G.enemies]) removeEnemy(e); G.waveQueue = []; G.chase = null; G.mode = 'play'; G.unlocked = i; setGates(i); ensureZoneProps(i); const st = ZONES[i].start; hero.body.position.set(st[0], 0.85, st[1]); camState.init = false; enterZone(i); },
   clearZone: () => { for (const e of [...G.enemies]) removeEnemy(e); G.waveQueue = []; G.chase = null; G.stepI = ZD(G.zone).steps.length - 1; zoneCleared(); },
