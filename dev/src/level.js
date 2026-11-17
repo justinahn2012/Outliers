@@ -230,9 +230,15 @@ export function buildLevel(scene, world, wet) {
   fill.rotation.x = -Math.PI / 2; fill.position.set(0, -0.02, -20); scene.add(fill); wet.hide.push(fill);
 
   // Brick facades with real glass windows (instanced), storefronts and rooftop clutter
+  // facades: mostly soot-dark brick, with red brick, industrial brick and painted render mixed in (seeded, so the city is stable)
+  const PAINT = [[0.55, 0.62, 0.6], [0.72, 0.62, 0.48], [0.5, 0.52, 0.6], [0.66, 0.5, 0.47], [0.6, 0.6, 0.58]];
   const brick = (w, h, rot) => {
-    const m = pbr('dark_brick_wall', w / 2.6, h / 2.6);
-    return m;
+    const r = rnd();
+    if (r < 0.42) return pbr('dark_brick_wall', w / 2.6, h / 2.6);
+    if (r < 0.62) return pbr('red_brick', w / 2.2, h / 2.2, { color: new THREE.Color(0.62, 0.55, 0.52) });
+    if (r < 0.82) return pbr('factory_brick', w / 2.4, h / 2.4, { color: new THREE.Color(0.8, 0.76, 0.72) });
+    const c = PAINT[Math.floor(rnd() * PAINT.length)];
+    return pbr('plaster_wall', w / 3.2, h / 3.2, { color: new THREE.Color(c[0], c[1], c[2]) });
   };
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x17181b, roughness: 0.95 });
   const glassDark = new THREE.MeshStandardMaterial({ color: 0x05070b, metalness: 0.9, roughness: 0.08, envMapIntensity: 1.6 });

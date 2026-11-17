@@ -6,15 +6,17 @@ import { aimArm, twoBoneIK, blendLocomotion, softTex } from './hero.js';
 
 // The Census: tactical "Counters" in black kit, visor-helmeted Marksmen, Lobbers with grenade packs,
 // and the Auditor — a ceramic-armoured heavy.
-const MALE = { idle: 'm_idle_neutral_01', walk: 'm_walk_cool_01', run: 'm_run_fast_01' };
-const FEMALE = { idle: 'f_idle_neutral_01', walk: 'f_walk_cool_01', run: 'f_run_fast_01' };
+// Census stand in an aggressive idle; below 40% health they limp (motion-captured injured walk/run)
+const MALE = { idle: 'm_idle_angry_01', walk: 'm_walk_cool_01', run: 'm_run_fast_01', hwalk: 'm_walk_bruised', hrun: 'm_run_injured' };
+const FEMALE = { idle: 'f_idle_angry_01', walk: 'f_walk_cool_01', run: 'f_run_fast_01', hwalk: 'f_walk_bruised', hrun: 'f_run_injured' };
+const CIVM = { idle: 'm_idle_neutral_01', walk: 'm_walk_cool_01', run: 'm_run_fast_01', hwalk: 'm_walk_bruised', hrun: 'm_run_injured' };
 export const ETYPES = {
   counter:  { hp: 60,  speed: 3.9, mass: 80,  scale: 1.0,  model: 'counter',  clips: MALE,   stagger: 14, grip: true, label: 'COUNTER', walkRef: 1.5, runRef: 5.0 },
   marksman: { hp: 50,  speed: 3.4, mass: 75,  scale: 1.0,  model: 'marksman', clips: FEMALE, stagger: 12, grip: true, label: 'MARKSMAN', walkRef: 1.45, runRef: 5.2 },
   lobber:   { hp: 55,  speed: 3.2, mass: 85,  scale: 1.04, model: 'counter',  clips: MALE,   stagger: 14, grip: true, label: 'LOBBER', walkRef: 1.5, runRef: 5.0 },
   auditor:  { hp: 520, speed: 2.5, mass: 650, scale: 1.62, model: 'auditor',  clips: { idle: 'aud_idle', walk: 'aud_walk', run: 'aud_run' }, stagger: 9999, grip: false, label: 'AUDITOR', walkRef: 1.3, runRef: 4.0 },
   warden:   { hp: 95,  speed: 2.7, mass: 110, scale: 1.08, model: 'counter',  clips: MALE,   stagger: 26, grip: true, label: 'WARDEN', walkRef: 1.5, runRef: 5.0, shield: true },
-  informant:{ hp: 40,  speed: 5.6, mass: 70,  scale: 0.97, model: 'civ_m',  clips: MALE,   stagger: 6,  grip: true, label: 'INFORMANT', walkRef: 1.5, runRef: 5.0 },
+  informant:{ hp: 40,  speed: 5.6, mass: 70,  scale: 0.97, model: 'civ_m',  clips: CIVM,   stagger: 6,  grip: true, label: 'INFORMANT', walkRef: 1.5, runRef: 5.0 },
   clerk:    { hp: 26,  speed: 4.4, mass: 10,  scale: 1.0,  drone: 'clerk', stagger: 1, grip: true, label: 'CLERK', hover: 2.5 },
   lamplighter: { hp: 640, speed: 3.0, mass: 400, scale: 1.0, drone: 'lamp', stagger: 9999, grip: false, label: 'LAMPLIGHTER', hover: 7.5, boss: true },
 };
@@ -24,16 +26,46 @@ function droneVisual(kind) {
   const big = kind === 'lamp', S = big ? 2.6 : 1;
   const g = new THREE.Group(); const mats = [];
   const shell = new THREE.MeshStandardMaterial({ color: big ? 0x2a2e34 : 0x3a3f46, metalness: 0.75, roughness: 0.35, emissive: 0x000000 }); mats.push(shell);
+  const dark = new THREE.MeshStandardMaterial({ color: 0x121417, metalness: 0.6, roughness: 0.5, emissive: 0x000000 }); mats.push(dark);
   const amber = new THREE.MeshStandardMaterial({ color: 0x221000, emissive: big ? 0xfff2dc : 0xff8a20, emissiveIntensity: big ? 0.6 : 1.6 }); mats.push(amber);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55 * S, 0.2 * S, 0.55 * S), shell); body.castShadow = true; g.add(body);
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.2 * S, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), shell); dome.position.y = 0.1 * S; g.add(dome);
+  const stripe = new THREE.MeshStandardMaterial({ color: 0x221000, emissive: 0xff8a20, emissiveIntensity: 1.4 }); mats.push(stripe);
+  const glass = new THREE.MeshStandardMaterial({ color: 0x05070a, metalness: 0.9, roughness: 0.05, envMapIntensity: 2 });
+  const add = (geo, mat, x, y, z, parent = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x * S, y * S, z * S); m.castShadow = true; parent.add(m); return m; };
+  // hull: an octagonal puck with a lit Census band and a dark sensor dome
+  add(new THREE.CylinderGeometry(0.27 * S, 0.3 * S, 0.16 * S, 8), shell, 0, 0, 0);
+  add(new THREE.CylinderGeometry(0.305 * S, 0.305 * S, 0.035 * S, 8), stripe, 0, -0.02, 0);
+  add(new THREE.SphereGeometry(0.17 * S, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), dark, 0, 0.08, 0);
+  // camera eye at the front, amber iris
+  add(new THREE.SphereGeometry(0.075 * S, 12, 10), glass, 0, -0.01, 0.27);
+  const iris = add(new THREE.TorusGeometry(0.06 * S, 0.012 * S, 6, 16), amber, 0, -0.01, 0.3); iris.castShadow = false;
+  // four arms with guarded rotors; spinning blades, not discs
   const rotors = [];
+  const bladeMat = new THREE.MeshStandardMaterial({ color: 0x1a1c1f, metalness: 0.4, roughness: 0.6 });
+  const blurMat = new THREE.MeshBasicMaterial({ color: 0x9aa0a8, transparent: true, opacity: 0.12, depthWrite: false });
   for (const [ax, az] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5 * S, 0.05 * S, 0.06 * S), shell); arm.position.set(ax * 0.32 * S, 0.02 * S, az * 0.32 * S); arm.rotation.y = Math.atan2(az, ax); g.add(arm);
-    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * S, 0.2 * S, 0.012 * S, 16), new THREE.MeshBasicMaterial({ color: 0x9aa0a8, transparent: true, opacity: 0.35, depthWrite: false })); r.position.set(ax * 0.52 * S, 0.07 * S, az * 0.52 * S); g.add(r); rotors.push(r);
+    const arm = add(new THREE.BoxGeometry(0.42 * S, 0.04 * S, 0.06 * S), shell, ax * 0.3, 0.02, az * 0.3); arm.rotation.y = -Math.atan2(az, ax);
+    add(new THREE.CylinderGeometry(0.045 * S, 0.05 * S, 0.08 * S, 10), dark, ax * 0.5, 0.04, az * 0.5);
+    const guard = add(new THREE.TorusGeometry(0.21 * S, 0.014 * S, 6, 24), shell, ax * 0.5, 0.08, az * 0.5); guard.rotation.x = Math.PI / 2;
+    const rot = new THREE.Group(); rot.position.set(ax * 0.5 * S, 0.09 * S, az * 0.5 * S); g.add(rot);
+    for (const r of [0, Math.PI / 2]) { const bl = new THREE.Mesh(new THREE.BoxGeometry(0.36 * S, 0.006 * S, 0.035 * S), bladeMat); bl.rotation.y = r; rot.add(bl); }
+    const blur = new THREE.Mesh(new THREE.CircleGeometry(0.19 * S, 20), blurMat); blur.rotation.x = -Math.PI / 2; blur.position.y = 0.004 * S; rot.add(blur);
+    rotors.push(rot);
+    // nav light on each arm tip: white at the front, amber behind
+    const nav = new THREE.Mesh(new THREE.SphereGeometry(0.02 * S, 6, 4), new THREE.MeshBasicMaterial({ color: az > 0 ? new THREE.Color(2.2, 2.2, 2.4) : new THREE.Color(2.6, 1.0, 0.2), toneMapped: false }));
+    nav.position.set(ax * 0.66 * S, 0.06 * S, az * 0.66 * S); g.add(nav);
   }
-  const lamp = new THREE.Mesh(big ? new THREE.CylinderGeometry(0.22 * S, 0.3 * S, 0.3 * S, 16) : new THREE.SphereGeometry(0.08, 10, 8), amber); lamp.position.y = -0.14 * S; g.add(lamp);
-  if (!big) { const stamp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.16), amber); stamp.position.y = -0.2; g.add(stamp); }
+  let lamp;
+  if (big) {
+    // searchlight: a gimballed housing with a hot lens
+    add(new THREE.BoxGeometry(0.1, 0.25, 0.4).scale(S, S, S), dark, 0, -0.12, 0);
+    add(new THREE.CylinderGeometry(0.2 * S, 0.26 * S, 0.24 * S, 18), dark, 0, -0.2, 0);
+    lamp = add(new THREE.CylinderGeometry(0.19 * S, 0.19 * S, 0.02 * S, 18), amber, 0, -0.32, 0);
+  } else {
+    // the stamp: a short piston with a glowing square pad
+    add(new THREE.CylinderGeometry(0.025, 0.025, 0.16, 8), shell, 0, -0.14, 0);
+    lamp = add(new THREE.BoxGeometry(0.16, 0.035, 0.16), amber, 0, -0.23, 0);
+    add(new THREE.BoxGeometry(0.19, 0.03, 0.19), dark, 0, -0.205, 0);
+  }
   return { g, mats, rotors };
 }
 let spotTex = null;
@@ -48,13 +80,16 @@ const shieldMat = new THREE.MeshStandardMaterial({ color: 0x1a2028, metalness: 0
 const shieldStripe = new THREE.MeshStandardMaterial({ color: 0x221000, emissive: 0xff8a20, emissiveIntensity: 1.3 });
 
 let ringTex = null;
-function threatRing(scale) {
+// ring colour says what it is from above: brawler red, rifle amber, grenades green, shield steel, runner white, heavy crimson
+const RING = { counter: [1.2, 0.26, 0.22], marksman: [1.3, 0.72, 0.14], lobber: [0.36, 1.2, 0.3], warden: [0.4, 0.7, 1.35], informant: [1.3, 1.25, 1.1], auditor: [1.4, 0.1, 0.08], clerk: [1.3, 0.7, 0.15], lamplighter: [1, 1, 1] };
+function threatRing(scale, type) {
   if (!ringTex) {
     const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
-    const g = x.createRadialGradient(64, 64, 30, 64, 64, 64); g.addColorStop(0, 'rgba(255,60,60,0)'); g.addColorStop(0.74, 'rgba(255,60,60,0.22)'); g.addColorStop(0.87, 'rgba(255,110,100,0.8)'); g.addColorStop(1, 'rgba(255,60,60,0)');
+    const g = x.createRadialGradient(64, 64, 30, 64, 64, 64); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.74, 'rgba(255,255,255,0.2)'); g.addColorStop(0.87, 'rgba(255,255,255,0.8)'); g.addColorStop(1, 'rgba(255,255,255,0)');   // white: the colour comes from the type
     x.fillStyle = g; x.fillRect(0, 0, 128, 128); ringTex = new THREE.CanvasTexture(c);
   }
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4 * scale, 1.4 * scale), new THREE.MeshBasicMaterial({ map: ringTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: new THREE.Color(1.1, 0.4, 0.4) }));
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4 * scale, 1.4 * scale), new THREE.MeshBasicMaterial({ map: ringTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: new THREE.Color(1.2, 0.26, 0.22) }));
+  if (type && RING[type]) m.material.color.setRGB(...RING[type]);
   m.rotation.x = -Math.PI / 2; m.renderOrder = 4; return m;
 }
 let barTex = null;
@@ -94,10 +129,10 @@ export function spawnEnemy(type, x, z) {
   const B = c.bones;
   const bones = type === 'auditor'
     ? { rU: findBone(B, 'mixamorigRightArm'), rF: findBone(B, 'mixamorigRightForeArm'), rH: findBone(B, 'mixamorigRightHand'), lU: findBone(B, 'mixamorigLeftArm'), lF: findBone(B, 'mixamorigLeftForeArm'), lH: findBone(B, 'mixamorigLeftHand'), spine: findBone(B, 'mixamorigSpine2'), lT: findBone(B, 'mixamorigLeftUpLeg'), rT: findBone(B, 'mixamorigRightUpLeg') }
-    : { rU: findBone(B, 'Bip01_R_UpperArm'), rF: findBone(B, 'Bip01_R_Forearm'), rH: findBone(B, 'Bip01_R_Hand'), lU: findBone(B, 'Bip01_L_UpperArm'), lF: findBone(B, 'Bip01_L_Forearm'), lH: findBone(B, 'Bip01_L_Hand'), spine: findBone(B, 'Bip01_Spine2'), lT: findBone(B, 'Bip01_L_Thigh'), rT: findBone(B, 'Bip01_R_Thigh') };
+    : { head: findBone(B, 'Bip01_Head'), rU: findBone(B, 'Bip01_R_UpperArm'), rF: findBone(B, 'Bip01_R_Forearm'), rH: findBone(B, 'Bip01_R_Hand'), lU: findBone(B, 'Bip01_L_UpperArm'), lF: findBone(B, 'Bip01_L_Forearm'), lH: findBone(B, 'Bip01_L_Hand'), spine: findBone(B, 'Bip01_Spine2'), lT: findBone(B, 'Bip01_L_Thigh'), rT: findBone(B, 'Bip01_R_Thigh') };
   const hb = bar(); root.add(hb.bg); root.add(hb.fg);
   G.scene.add(root);
-  const ring = threatRing(s); G.scene.add(ring);
+  const ring = threatRing(s, type); G.scene.add(ring);
   const blob = blobShadow(1.3 * s); G.scene.add(blob);
   // gear: stun-gauntlet glow (counter), rifle (marksman), grenade canisters (lobber), eye (auditor)
   const gear = {};
@@ -105,7 +140,7 @@ export function spawnEnemy(type, x, z) {
     gear.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: softTex(), color: type === 'auditor' ? new THREE.Color(2.2, 0.3, 0.2) : new THREE.Color(2.2, 1.1, 0.25), transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
     gear.glow.scale.setScalar(type === 'auditor' ? 0.6 : 0.32); G.scene.add(gear.glow);
   }
-  if (type === 'marksman') { gear.rifle = makeRifle(); G.scene.add(gear.rifle); }
+  if (type === 'marksman') { gear.rifle = makeRifle(); G.scene.add(gear.rifle); c.obj.traverse(o => { if (o.isMesh && /machinegun/.test(o.material.name)) o.visible = false; }); }   // she carries ours, not the slung one
   // the informant is a civilian with Moth's address glowing on a phone in his hand
   if (type === 'informant') {
     gear.pad = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.015, 0.15), padMat); G.scene.add(gear.pad);
@@ -113,7 +148,8 @@ export function spawnEnemy(type, x, z) {
   }
   // guns that came without textures render as flat placeholder yellow: make them gunmetal
   for (const m of c.mats) if (/pistol|shotgun/.test(m.name)) { m.map = null; m.color.set(0x1c1e22); m.metalness = 0.65; m.roughness = 0.42; m.needsUpdate = true; }
-  if (def.model !== 'civ_m' && def.model !== 'civ_f') for (const m of c.mats) if (!(m.alphaTest > 0)) addRim(m, type === 'auditor' ? 0xff5a30 : 0xff8a3a, type === 'auditor' ? 0.16 : 0.2, 3.2);
+  const civ = def.model === 'civ_m' || def.model === 'civ_f';
+  for (const m of c.mats) addRim(m, type === 'auditor' ? 0xff5a30 : 0xff8a3a, civ || m.alphaTest > 0 ? 0 : type === 'auditor' ? 0.16 : 0.2, 3.2);
   if (type === 'lobber') {
     gear.pack = new THREE.Group();
     const plate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, 0.05), new THREE.MeshStandardMaterial({ color: 0x1b1d20, metalness: 0.4, roughness: 0.6 })); plate.position.z = 0.03; gear.pack.add(plate);
@@ -159,7 +195,7 @@ function spawnDrone(type, def, x, z) {
   const root = new THREE.Group(); root.add(V.g); G.scene.add(root);
   const hb = bar(); root.add(hb.bg); root.add(hb.fg);
   const s = def.drone === 'lamp' ? 2.6 : 1;
-  const ring = threatRing(def.drone === 'lamp' ? 2.4 : 0.8); G.scene.add(ring);
+  const ring = threatRing(def.drone === 'lamp' ? 2.4 : 0.8, type); G.scene.add(ring);
   const blob = blobShadow(def.drone === 'lamp' ? 3 : 0.9); G.scene.add(blob);
   const body = new CANNON.Body({ mass: def.mass, material: G.charMat, fixedRotation: true, linearDamping: 0.2, angularDamping: 0.4, collisionFilterGroup: GRP.ENEMY, collisionFilterMask: ALL, allowSleep: false });
   body.addShape(new CANNON.Sphere(def.drone === 'lamp' ? 1.35 : 0.36));
@@ -242,6 +278,15 @@ export function updateEnemyVisual(e, dt) {
   const sp = Math.hypot(b.velocity.x, b.velocity.z);
   const moving = (e.state === 'move' || e.state === 'charge') ? sp : 0;
   blendLocomotion(e.char, limp ? 0 : moving, dt, e.def.walkRef, e.def.runRef);
+  const A = e.char.actions;
+  if (A.hwalk && A.hrun) {
+    const want = !e.dead && e.hp < e.maxHp * 0.4 ? 1 : 0;
+    e.hurtK = (e.hurtK || 0) + (want - (e.hurtK || 0)) * Math.min(1, dt * 3);
+    const h = e.hurtK, ww = A.walk.getEffectiveWeight(), rw = A.run.getEffectiveWeight();
+    A.walk.setEffectiveWeight(ww * (1 - h)); A.run.setEffectiveWeight(rw * (1 - h));
+    A.hwalk.setEffectiveWeight(ww * h); A.hrun.setEffectiveWeight(rw * h);
+    A.hwalk.timeScale = A.walk.timeScale * 0.9; A.hrun.timeScale = A.run.timeScale;
+  }
   e.char.mixer.update(limp ? dt * 0.15 : dt);
   e.root.updateMatrixWorld(true);
 
@@ -249,16 +294,48 @@ export function updateEnemyVisual(e, dt) {
   const hp = G.hero.body.position;
   const fx = Math.sin(e.yaw), fz = Math.cos(e.yaw);
   if (!limp && !e.dead) {
+    if ((e.type === 'counter' || e.type === 'warden' || e.type === 'lobber') && (e.state === 'windup' || e.state === 'strike' || e.state === 'throw')) {
+      // torso: wind back on the windup, drive through on the strike (twist about up + lean)
+      const wind = e.state === 'windup' ? Math.min(1, e.stateT / 0.35) : e.state === 'throw' ? Math.max(0, 1 - e.stateT / 0.3) : 0;
+      const drive = e.state === 'strike' ? Math.sin(Math.min(1, e.stateT / 0.3) * Math.PI) : e.state === 'throw' ? Math.max(0, Math.min(1, (e.stateT - 0.3) / 0.25)) : 0;
+      if (B.spine && B.rU && B.lU) {
+        B.rU.getWorldPosition(_rs); B.lU.getWorldPosition(_ls);
+        const rx = _rs.x - _ls.x, rz = _rs.z - _ls.z, sgn = -Math.sign(rz * fx - rx * fz) || 1;
+        bendBone(B.spine, _up, sgn * (0.55 * wind - 0.6 * drive));
+        _f.set(fz, 0, -fx); bendBone(B.spine, _f, -0.18 * wind + 0.28 * drive);
+      }
+    }
     if ((e.type === 'counter' || e.type === 'warden') && (e.state === 'windup' || e.state === 'strike')) {
-      B.rU.getWorldPosition(_p);
-      if (e.state === 'windup') _t.set(_p.x - fx * 0.4, _p.y + 1.3, _p.z - fz * 0.4); else _t.set(hp.x, 0.9, hp.z);
-      aimArm(B.rU, B.rF, B.rH, _t, 1);
+      B.rU.getWorldPosition(_p); B.lU.getWorldPosition(_ls);
+      _left.copy(_ls).sub(_p); _left.y = 0; _left.normalize();
+      if (e.state === 'windup') {
+        // stun-baton fist cocked back beside the head, elbow high and behind
+        const k = Math.min(1, e.stateT / 0.25);
+        _t.set(_p.x - fx * 0.22 - _left.x * 0.1, _p.y + 0.12, _p.z - fz * 0.22 - _left.z * 0.1);
+        _pole.set(_p.x - _left.x * 0.4 - fx * 0.5, _p.y + 0.1, _p.z - _left.z * 0.4 - fz * 0.5);
+        twoBoneIK(B.rU, B.rF, B.rH, _t, _pole, k);
+      } else { _t.set(hp.x, 1.1, hp.z); aimArm(B.rU, B.rF, B.rH, _t, 1, 0.9); }
     }
     if (e.shield && e.shieldUp) shieldPose(e, fx, fz);
-    if (e.type === 'marksman') {
-      _t.set(hp.x, 1.25, hp.z);
-      const w = e.state === 'aim' || e.state === 'recover' || e.state === 'burst' ? 1 : 0.65;
-      aimArm(B.rU, B.rF, B.rH, _t, w); aimArm(B.lU, B.lF, B.lH, _t, w * 0.9);
+    if (e.type === 'marksman' && e.gear.rifle && B.rU && B.lU) {
+      const aiming = e.state === 'aim' || e.state === 'recover' || e.state === 'burst';
+      e.aimK = (e.aimK || 0) + ((aiming ? 1 : 0) - (e.aimK || 0)) * Math.min(1, dt * 8);
+      B.rU.getWorldPosition(_rs); B.lU.getWorldPosition(_ls);
+      _left.copy(_ls).sub(_rs); _left.y = 0; _left.normalize();
+      // aim straight at her when aiming; otherwise low ready, muzzle down
+      _d1.set(hp.x - _rs.x, 1.2 - _rs.y, hp.z - _rs.z).normalize();
+      _d2.set(fx + _left.x * 0.35, -0.75, fz + _left.z * 0.35).normalize();
+      _dir.copy(_d2).lerp(_d1, e.aimK).normalize();
+      const R = e.gear.rifle;
+      R.position.copy(_rs).addScaledVector(_dir, 0.3).addScaledVector(_left, 0.07); R.position.y -= 0.04;
+      R.lookAt(_t.copy(R.position).add(_dir));
+      _g1.set(0, -0.09, -0.08).applyQuaternion(R.quaternion).add(R.position);   // trigger hand on the grip
+      _g2.set(0, -0.05, 0.19).applyQuaternion(R.quaternion).add(R.position);    // support hand on the handguard
+      _pole.copy(_rs).addScaledVector(_left, -0.45); _pole.y -= 0.6;
+      twoBoneIK(B.rU, B.rF, B.rH, _g1, _pole, 1);
+      _pole.copy(_ls).addScaledVector(_left, 0.3).addScaledVector(_dir, 0.2); _pole.y -= 0.6;
+      twoBoneIK(B.lU, B.lF, B.lH, _g2, _pole, 1);
+      if (B.head) { _f.set(_dir.z, 0, -_dir.x).normalize(); bendBone(B.head, _f, 0.12 * e.aimK); }   // cheek down to the stock
     }
     if (e.type === 'lobber' && e.state === 'throw') {
       B.rU.getWorldPosition(_p);
@@ -289,16 +366,15 @@ export function updateEnemyVisual(e, dt) {
   }
   // gear placement
   if (e.gear.glow && B.rH) { B.rH.getWorldPosition(_p); e.gear.glow.position.copy(_p); e.gear.glow.material.opacity = e.dead ? 0 : (e.state === 'windup' || e.state === 'slamWind' ? 1 : 0.45) * (0.8 + Math.sin(G.rt * 20) * 0.2); }
-  if (e.gear.rifle && B.rH) {
-    B.rH.getWorldPosition(_p);
-    e.gear.rifle.position.copy(_p);
-    if (!limp) { _t.set(hp.x, 1.25, hp.z); e.gear.rifle.lookAt(_t); e.gear.rifle.translateZ(0.25); }
-    else e.gear.rifle.quaternion.copy(e.root.quaternion);
-    e.gear.rifle.visible = !e.dead || e.fade > 0.5;
-  }
+  if (e.gear.rifle && B.rH && (limp || e.dead)) { B.rH.getWorldPosition(_p); e.gear.rifle.position.copy(_p); e.gear.rifle.quaternion.copy(e.root.quaternion); }
   if (e.gear.pack && B.spine) {
     B.spine.getWorldPosition(_p); e.gear.pack.position.set(_p.x - fx * 0.16, _p.y - 0.02, _p.z - fz * 0.16);
     e.gear.pack.quaternion.copy(e.root.quaternion); e.gear.pack.visible = e.fade > 0.3;
+  }
+  if (e.flinch > 0 && !limp && !e.dead && B.spine && e.hitDir) {
+    const k = Math.sin(Math.min(1, e.flinch / 0.22) * Math.PI) * (e.type === 'auditor' ? 0.18 : 0.42);
+    _f.set(e.hitDir.z, 0, -e.hitDir.x).normalize();          // bend axis: perpendicular to the hit, in the ground plane
+    bendBone(B.spine, _f, k); if (B.head) bendBone(B.head, _f, k * 0.7);
   }
   if (e.shield) placeShield(e, fx, fz, limp);
   if (e.gear.pad && B.rH) {
@@ -308,11 +384,19 @@ export function updateEnemyVisual(e, dt) {
   if (e.flinch > 0) e.flinch -= dt;
   // spawn / death scale
   if (e.state === 'spawn') e.model.scale.setScalar(Math.min(1, e.spawnT / 0.5));
-  else if (e.dead) e.model.scale.setScalar(Math.max(0.001, e.fade));
   else e.model.scale.setScalar(1);
+  if (e.dead) {
+    const d = Math.min(1, 1 - e.fade);
+    if (d !== e._dis) { e._dis = d; for (const m of e.char.mats) if (m.userData.rim) m.userData.rim.uDis.value = d; }
+    for (const k in e.gear) if (e.gear[k].visible !== undefined && e.gear[k].isObject3D) e.gear[k].visible = d < 0.45;
+    if (e.shield) e.shield.visible = d < 0.45;
+  }
   // threat ring
   e.ring.position.set(b.position.x, 0.025, b.position.z);
-  e.ring.material.opacity = e.dead ? Math.max(0, e.fade - 0.3) : (e.state === 'spawn' ? Math.min(1, e.spawnT * 2) : 0.85);
+  const tele = e.state === 'windup' || e.state === 'aim' || e.state === 'throw' || e.state === 'slamWind' || e.state === 'chargeWind';
+  e.tele = (e.tele || 0) + ((tele ? 1 : 0) - (e.tele || 0)) * Math.min(1, dt * 10);
+  e.ring.material.opacity = e.dead ? Math.max(0, e.fade - 0.3) : (e.state === 'spawn' ? Math.min(1, e.spawnT * 2) : 0.85 + e.tele * 0.6);
+  e.ring.scale.setScalar(1 + e.tele * (0.18 + Math.sin(G.rt * 22) * 0.08));
   e.ring.visible = e.ring.material.opacity > 0.01;
   const air = Math.max(0, b.position.y - 0.85 * s);
   e.blob.position.set(b.position.x, 0.02, b.position.z); e.blob.material.opacity = 0.8 * e.fade * Math.max(0, 1 - air / 3); e.blob.scale.setScalar(1 + air * 0.3);
@@ -332,7 +416,15 @@ export function updateEnemyVisual(e, dt) {
   }
 }
 
+// rotate a bone about a WORLD axis (Object3D.rotateOnWorldAxis assumes an unrotated parent; bones never have one)
+const _bq = new THREE.Quaternion(), _bpq = new THREE.Quaternion(), _bdq = new THREE.Quaternion();
+export function bendBone(bone, axis, ang) {
+  bone.getWorldQuaternion(_bq); _bdq.setFromAxisAngle(axis, ang); _bq.premultiply(_bdq);
+  bone.parent.getWorldQuaternion(_bpq).invert(); bone.quaternion.copy(_bpq.multiply(_bq));
+  bone.updateMatrixWorld(true);
+}
 // Warden: left forearm across the chest, shield strapped to it and squared to the front
+const _d1 = new THREE.Vector3(), _d2 = new THREE.Vector3(), _dir = new THREE.Vector3(), _g1 = new THREE.Vector3(), _g2 = new THREE.Vector3();
 const _ls = new THREE.Vector3(), _rs = new THREE.Vector3(), _left = new THREE.Vector3(), _pole = new THREE.Vector3(), _hand = new THREE.Vector3(), _fore = new THREE.Vector3(), _sq = new THREE.Quaternion(), _sy = new THREE.Quaternion();
 function shieldPose(e, fx, fz) {
   const B = e.bones; if (!B.lU || !B.rU) return;

@@ -352,7 +352,7 @@ function registerHit(e, o, impact, cp) {
 function damageEnemy(e, dmg, dir, force, src) {
   if (e.dead || !e.alive) return;
   if (e.retreating) return;
-  e.hp -= dmg; e.hpShow = 2.5; e.flinch = 0.22;
+  e.hp -= dmg; e.hpShow = 2.5; e.flinch = 0.22; e.hitDir = dir ? (e.hitDir || new THREE.Vector3()).set(dir.x, 0, dir.z).normalize() : e.hitDir;
   if (e.type === 'auditor' && G.mission && G.mission.kind === 'auditor1' && e.hp < e.maxHp * 0.5) { e.hp = Math.max(e.hp, e.maxHp * 0.45); startRetreat(e); }
   if (e.type === 'lamplighter' && !e.half && e.hp < e.maxHp * 0.5) {
     e.half = true; sayList(CHAPTER.lamplighterHalf);
@@ -1187,8 +1187,12 @@ function updateEnemy(e, dt) {
       e.restT = (e.downT > 0.9 && sp < 1.4) ? (e.restT || 0) + dt : 0;
       if ((e.restT > 0.1 && (b.position.y < 1.4 * s || e.restT > 1.2)) || (e.dead && e.downT > 4)) {
         if (e.dead) {
-          e.fade -= dt * 1.4;
-          if (e.fade <= 0) { FX.psi(_v2.set(b.position.x, 0.6, b.position.z), 16, 2.5, 0.25, 0.7); removeEnemy(e); }
+          // counted out: the record is deleted block by block and the pieces lift away in Census amber
+          if (!e.deleting) { e.deleting = true; sfx.stamp(); FX.rings.spawn(b.position.x, 0.05, b.position.z, 0.3, 1.8, 0.5, 0xffa040, 0.9); }
+          e.fade -= dt * 1.25;
+          const bl = e.bones ? Object.values(e.bones).filter(Boolean) : null;
+          if (bl && bl.length) for (let k = 0; k < 3; k++) { bl[(Math.random() * bl.length) | 0].getWorldPosition(_v3); Powers.voxels.emit(_v3.x + rand(-0.1, 0.1), _v3.y, _v3.z + rand(-0.1, 0.1), rand(-0.5, 0.5), rand(1.0, 2.4), rand(-0.5, 0.5), rand(0.05, 0.1), rand(0.5, 0.9), 2.4, 1.15, 0.3, -1.5); }
+          if (e.fade <= 0) { voxelPuff(b.position.x, 0.6, b.position.z, 8, 1.5, 1.5, 0.08, 0.5); removeEnemy(e); }
         } else { e.state = 'getup'; e.stateT = 0; e.upFrom = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w); }
       }
       return;
@@ -1458,7 +1462,7 @@ function lampCounted(e, hp) {
   }, 150 + k * 130);
 }
 function gunPos(e) {
-  if (e.gear && e.gear.rifle) { const r = e.gear.rifle; r.updateMatrixWorld(); return new THREE.Vector3(0, 0, 0.42).applyMatrix4(r.matrixWorld); }
+  if (e.gear && e.gear.rifle) { const r = e.gear.rifle; r.updateMatrixWorld(); return new THREE.Vector3(0, 0.012, 0.72).applyMatrix4(r.matrixWorld); }
   const b = e.body;
   const fx = Math.sin(e.yaw), fz = Math.cos(e.yaw);
   return new THREE.Vector3(b.position.x + fx * 0.75 + fz * 0.25, b.position.y + 0.55, b.position.z + fz * 0.75 - fx * 0.25);
@@ -2150,7 +2154,8 @@ const CIVS = [];
 function makeCiv(x, z, i) {
   const fem = i % 2 === 1;
   // Moth's uncounted: ordinary people in ordinary clothes (no chips, no Census kit)
-  const c = makeCharacter(fem ? 'civ_f' : 'civ_m', fem ? { idle: 'f_idle_neutral_01', walk: 'f_walk_cool_01', run: 'f_run_fast_01' } : { idle: 'm_idle_neutral_01', walk: 'm_walk_cool_01', run: 'm_run_fast_01' });
+  // caged: crouched and cowering (motion capture); freed: they run for it
+  const c = makeCharacter(fem ? 'civ_f' : 'civ_m', fem ? { idle: 'f_crouch_idle', walk: 'f_walk_cool_01', run: 'f_run_fast_01' } : { idle: 'm_crouch_idle', walk: 'm_walk_cool_01', run: 'm_run_fast_01' });
   for (const m of c.mats) if (m.color && !(m.alphaTest > 0) && /body/.test(m.name)) m.color.multiply(new THREE.Color(...[[1, 1, 1], [1, 1, 1], [1.12, 0.95, 0.85], [0.85, 0.95, 1.1]][i % 4]));
   const root = new THREE.Group(); root.add(c.obj); c.obj.position.y = 0; scene.add(root);
   root.position.set(x, 0, z); root.rotation.y = 0;
@@ -2355,7 +2360,7 @@ function updateCamera(rdt) {
   camState.pitchDeg = camState.pitchDeg || wantPitch;
   camState.pitchDeg += (wantPitch - camState.pitchDeg) * damp(4, rdt);
   const pitch = THREE.MathUtils.degToRad(camState.pitchDeg);
-  let dist = aspect < 1 ? clamp(5.5 / (Math.tan(fov / 2) * aspect), 11, 21) : 14;
+  let dist = aspect < 1 ? clamp(5.5 / (Math.tan(fov / 2) * aspect), 11, 19.5) : 14;   // a touch closer on phones: characters read bigger
   if (G.ultState) dist *= G.ultState.phase === 'vortex' ? 1.18 : 1.1;
   if (G.closeup) {
     const hp2 = heroCenter(); const c = G.closeup; const a = hero.yaw + c.yawOff;
@@ -2659,6 +2664,7 @@ window.__dbg = {
   toScreen: (x, y, z) => { const o = {}; toScreen({ x, y, z }, o); return [o.x, o.y]; },
   cam: (...o) => { G.camOverride = o.length ? o : null; },
   freeze: (on) => { for (const e of G.enemies) { e.atkCD = on ? 999 : 1; } G.booth = !!on; },
+  dmg: (i, n, dx = 0, dz = -1) => { const e = G.enemies[i < 0 ? G.enemies.length + i : i]; if (e) damageEnemy(e, n, new THREE.Vector3(dx, 0, dz), 6, 'hit'); },
   pose: (i, st) => { const e = G.enemies[i]; if (e) e.boothState = st; },
   spawn: (t, x, z) => { const e = spawnEnemy(t, x, z); attach(e); return G.enemies.length; },
   zone: (i) => { syncUnlocksForCheckpoint(i); for (const e of [...G.enemies]) removeEnemy(e); G.waveQueue = []; G.chase = null; G.mode = 'play'; G.unlocked = i; setGates(i); ensureZoneProps(i); const st = ZONES[i].start; hero.body.position.set(st[0], 0.85, st[1]); camState.init = false; enterZone(i); },

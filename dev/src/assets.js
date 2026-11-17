@@ -9,9 +9,10 @@ export const A = { gltf: {}, clips: {}, tex: {}, env: null, ready: false };
 
 const MODELS = ['iris', 'counter', 'marksman', 'auditor', 'civ_m', 'civ_f', 'trashcan', 'barrel_red', 'barrel_blue', 'crate', 'barrier', 'covered_car',
   'utility_box', 'trashbag', 'cardboard', 'hydrant', 'street_lamp', 'fire_barrel'];
-const ANIMS = ['f_idle_neutral_01', 'f_walk_cool_01', 'f_run_fast_01', 'm_idle_neutral_01', 'm_walk_cool_01', 'm_run_fast_01'];
+const ANIMS = ['f_idle_neutral_01', 'f_walk_cool_01', 'f_run_fast_01', 'm_idle_neutral_01', 'm_walk_cool_01', 'm_run_fast_01',
+  'm_idle_angry_01', 'f_idle_angry_01', 'm_crouch_idle', 'f_crouch_idle', 'm_walk_bruised', 'm_run_injured', 'f_walk_bruised', 'f_run_injured'];
 const TEXTURES = ['asphalt_02_d', 'asphalt_02_n', 'asphalt_02_arm', 'pavement_03_d', 'pavement_03_n', 'pavement_03_arm',
-  'dark_brick_wall_d', 'dark_brick_wall_n', 'dark_brick_wall_arm', 'concrete_wall_008_d', 'concrete_wall_008_n', 'concrete_wall_008_arm'];
+  'dark_brick_wall_d', 'dark_brick_wall_n', 'dark_brick_wall_arm', 'red_brick_d', 'red_brick_n', 'red_brick_arm', 'factory_brick_d', 'factory_brick_n', 'factory_brick_arm', 'plaster_wall_d', 'plaster_wall_n', 'plaster_wall_arm', 'concrete_wall_008_d', 'concrete_wall_008_n', 'concrete_wall_008_arm'];
 
 // Asset bytes ship inside script "packs" (base64) so the game runs anywhere a plain page can —
 // including hosts that won't serve .glb/.hdr. Falls back to fetching loose files.
@@ -103,13 +104,13 @@ export function makeCharacter(key, clipKeys) {
 
 // A fresnel rim in emissive: readable silhouettes from the top-down camera (violet on Null, amber on the Census)
 export function addRim(mat, color, k = 0.6, pw = 2.4) {
-  const u = { uRimCol: { value: new THREE.Color(color) }, uRimK: { value: k }, uRimP: { value: pw } };
+  const u = { uRimCol: { value: new THREE.Color(color) }, uRimK: { value: k }, uRimP: { value: pw }, uDis: { value: 0 }, uDisCol: { value: new THREE.Color(2.6, 1.25, 0.32) } };
   mat.userData.rim = u;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uRimCol; uniform float uRimK; uniform float uRimP;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ float fr = 1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0); totalEmissiveRadiance += uRimCol * pow(fr, uRimP) * uRimK; }');
+      .replace('#include <common>', '#include <common>\nuniform vec3 uRimCol; uniform float uRimK; uniform float uRimP; uniform float uDis; uniform vec3 uDisCol;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ float fr = 1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0); totalEmissiveRadiance += uRimCol * pow(fr, uRimP) * uRimK; }\nif (uDis > 0.0) { vec2 dc = floor(gl_FragCoord.xy / 5.0); float dn = fract(sin(dot(dc, vec2(12.9898, 78.233))) * 43758.5453); if (dn < uDis) discard; if (dn < uDis + 0.14) totalEmissiveRadiance += uDisCol; }');
   };
   mat.customProgramCacheKey = () => 'rim';
   mat.needsUpdate = true;

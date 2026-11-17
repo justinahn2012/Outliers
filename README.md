@@ -21,5 +21,7 @@ python3 pack.py      # assets_src/ -> ../pack1.js..pack3.js (only when assets ch
 - Props, street/brick textures, night HDRI: Poly Haven (CC0)
 - Null (Iris) and Census troopers + motion capture: Microsoft Rocketbox Avatar Library (MIT)
 - Civilians (Moth's uncounted, the informant): Rocketbox Male_Adult_18 and Female_Adult_14 (MIT)
+- Extra motion capture (angry idles, injured walk/run, crouch idles): Rocketbox animation library (MIT)
+- Facades: Poly Haven large_red_bricks, factory_brick, painted_plaster_wall (CC0)
 - Auditor heavy armour: Mixamo "Vanguard" (via three.js examples; Adobe Mixamo terms)
 - Engine: three.js (MIT), cannon-es (MIT)

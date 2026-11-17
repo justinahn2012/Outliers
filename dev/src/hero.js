@@ -46,6 +46,10 @@ export function createHero() {
   const blob = blobShadow(1.3); blob.position.y = 0.02; root.add(blob);
   const light = new THREE.PointLight(0xa58cff, 1.5, 6, 2); light.position.set(0, 1.2, 0.9); root.add(light);
   G.scene.add(root);
+  // the backups inked on her arms: three bands round each forearm that burn violet when she reaches into the record
+  const bandMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.7, 0.45, 1.6), toneMapped: false, transparent: true, opacity: 0.5, depthWrite: false });
+  const bandGeo = new THREE.TorusGeometry(0.05, 0.0042, 5, 22);
+  const bands = []; for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(bandGeo, bandMat); m.renderOrder = 7; G.scene.add(m); bands.push(m); }
 
   const body = new CANNON.Body({ mass: 70, material: G.charMat, fixedRotation: true, linearDamping: 0.0, collisionFilterGroup: GRP.HERO, collisionFilterMask: ALL & ~GRP.HELD, allowSleep: false });
   body.addShape(new CANNON.Sphere(0.36), new CANNON.Vec3(0, -0.47, 0));
@@ -54,7 +58,7 @@ export function createHero() {
   G.world.addBody(body);
 
   const hero = {
-    kind: 'hero', root, model, body, char: c, bones, hair, handGlow, handHalo, browGlow, browHalo, aura, light, U, trail: new HandTrail(), flourish: null,
+    kind: 'hero', root, model, body, char: c, bones, hair, handGlow, handHalo, browGlow, browHalo, aura, light, U, trail: new HandTrail(), flourish: null, bands, bandMat,
     hp: 100, maxHp: 100, focus: 100, maxFocus: 100,
     yaw: Math.PI, moveAmt: 0, power: 0, lastHurt: -10, focusDelay: 0, levitate: 0, invuln: 0, dead: false,
     pos: new THREE.Vector3(0, 0, 12), aimW: [0, 0], stepT: 0, stepSide: 1,
@@ -350,4 +354,17 @@ export function updateHeroVisual(h, dt, holds) {
   h.aura.scale.setScalar(0.8 + h.power * 0.7 + Math.sin(G.rt * 3) * 0.06);
   h.aura.material.opacity = 0.25 + h.power * 0.6;
   h.aura.rotation.z += dt * (0.4 + h.power * 2);
+  // tattoo bands ride the forearms; they glow with how hard she is writing
+  if (h.bands && B.lF && B.lH && B.rF && B.rH) {
+    let i = 0;
+    for (const [F, H] of [[B.lF, B.lH], [B.rF, B.rH]]) {
+      F.getWorldPosition(_t); H.getWorldPosition(_c); _d.copy(_c).sub(_t); const len = _d.length(); _d.normalize();
+      for (const f of [0.38, 0.55, 0.72]) { const m = h.bands[i++]; m.position.copy(_t).addScaledVector(_d, len * f); m.quaternion.setFromUnitVectors(_Z, _d); m.visible = !h.dead; }
+    }
+    const want = 0.12 + h.power * 0.9 + (holds.length ? 0.35 : 0) + Math.min(0.4, (h.surgePose || 0));
+    h.bandGlow = (h.bandGlow || 0) + (want - (h.bandGlow || 0)) * damp(8, dt);
+    h.bandMat.opacity = Math.min(1, h.bandGlow) * (0.85 + Math.sin(G.rt * 7) * 0.15);
+    h.bandMat.color.setRGB(0.5 + h.bandGlow * 0.8, 0.28 + h.bandGlow * 0.4, 1.4 + h.bandGlow * 1.5);
+  }
 }
+const _Z = new THREE.Vector3(0, 0, 1);
