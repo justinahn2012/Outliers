@@ -11,6 +11,7 @@ import { initAudio, sfx, setHum, setMasterMuted } from './audio.js';
 import { FX } from './fx.js';
 import { Tether } from './fx.js';
 import { buildLevel, buildEnvironment, Wet } from './level.js';
+import { makeCyber } from './cyber.js';
 import { makeProp, removeProp, setGlow, applyDamageLook, populateZone, DEFS } from './props.js';
 import { createHero, updateHeroVisual, blendLocomotion } from './hero.js';
 import { spawnEnemy, removeEnemy, updateEnemyVisual, setRagdoll, setEnemyGlow, ETYPES } from './enemies.js';
@@ -166,7 +167,7 @@ for (const t of tethers) wet.hide.push(t.mesh);
 resize();
 window.addEventListener('resize', resize);
 
-let level = null, hero = null;
+let level = null, hero = null, cyber = null;
 async function boot() {
   const btn = document.getElementById('startbtn');
   btn.disabled = true;
@@ -177,6 +178,7 @@ async function boot() {
   }
   buildEnvironment(renderer, scene);
   level = buildLevel(scene, world, wet); G.level = level; level.facade.sfx = sfx;
+  cyber = makeCyber(scene, level, wet, world); G.cyber = cyber;
   // Upright characters are velocity-driven with locked rotation; cannon's friction would pin them in place,
   // so they get a frictionless material. Ragdolls drop the material and use normal friction.
   world.addContactMaterial(new CANNON.ContactMaterial(G.charMat, G.groundMat, { friction: 0, restitution: 0 }));
@@ -536,6 +538,7 @@ function rewriteAt(id, x, y) {
 function rewriteGate(g, at) {
   if (!spendHeat(4)) return;
   g.flicker();
+  if (cyber) { const gp = g.pos, gw = g.x1 - g.x0, gy = g.alongZ ? Math.PI / 2 : 0; cyber.writeBorder(gp.x, 0.05, gp.z, gw, 3.6, gy); cyber.later(0.55, () => cyber.healSweep(gp.x, gp.z, gw, 0.4, gy, 0.05, 3.8)); }
   const n = G.enemies.filter(e => e.alive && !e.dead).length + RELAYS.filter(R => R.alive).length;
   num(_v2.set(at.x, 2.6, at.z), n ? `RENEWED ×${n}` : 'SWEEP STILL OPEN', 'psi', 1.3);
   voxelPuff(at.x, 1.6, at.z, 14, 1.5, 1.5, 0.08, 0.5); sfx.stamp(); G.glitch = Math.max(G.glitch || 0, 0.25);
@@ -563,6 +566,7 @@ function tearWall(id, b, touch, sx, sy) {
   FX.rings.spawn(face.x + n.x * 0.5, 0.06, face.z + n.z * 0.5, 0.2, 1.8, 0.4, 0x9b7bff, 1);
   const E = { kind: 'tear', mesh: hole, prop: o, t: 0, life: 10, p: face.clone(), n };
   EDITS.push(E); o.edit = E;
+  if (cyber) cyber.writeBorder(face.x + n.x * 0.04, 0.75, face.z + n.z * 0.04, 1.4, 1.1, yaw);
   voxelPuff(face.x + n.x * 0.5, 1.3, face.z + n.z * 0.5, 30, 3.5, 2.5, 0.1, 0.8);
   FX.dust(_v2.set(face.x + n.x * 0.6, 1.0, face.z + n.z * 0.6), 6, 2, 0.9);
   sfx.impact(0.8, false); sfx.stamp(); addTrauma(0.16); G.glitch = Math.max(G.glitch || 0, 0.2);
@@ -586,7 +590,8 @@ function raiseCover(p) {
   body.quaternion.setFromEuler(0, yaw, 0); body.userData = { edit: true }; world.addBody(body);
   const mat = new THREE.MeshStandardMaterial({ color: 0x0b0914, roughness: 0.3, metalness: 0.3, emissive: 0xffffff, emissiveMap: editTex, emissiveIntensity: 1.1 });
   const mesh = new THREE.Mesh(coverGeo, mat); mesh.position.set(cx, 0, cz); mesh.rotation.y = yaw; mesh.scale.y = 0.02; mesh.castShadow = true; mesh.add(edgeLines(coverGeo)); scene.add(mesh);
-  EDITS.push({ kind: 'cover', mesh, body, mat, t: 0, life: 8, p: new THREE.Vector3(cx, 0, cz) });
+  EDITS.push({ kind: 'cover', mesh, body, mat, t: 0, life: 8, p: new THREE.Vector3(cx, 0, cz), yaw });
+  if (cyber) { cyber.writeBorder(cx + ux * (COVER_T / 2 + 0.03), 0, cz + uz * (COVER_T / 2 + 0.03), COVER_W, COVER_H, yaw); cyber.writeBorder(cx - ux * (COVER_T / 2 + 0.03), 0, cz - uz * (COVER_T / 2 + 0.03), COVER_W, COVER_H, yaw); }
   // whatever is standing where the street stands up gets thrown off it
   const c = Math.cos(yaw), s = Math.sin(yaw);
   for (const e of G.enemies) {
@@ -616,6 +621,11 @@ function updateEdits(dt) {
   for (let i = EDITS.length - 1; i >= 0; i--) {
     const E = EDITS[i]; E.t += dt;
     const closing = Math.max(0, E.t - (E.life - 0.8)) / 0.8;
+    if (closing > 0 && !E.swept && cyber) {          // the city agrees it back: an amber re-render line rises through it
+      E.swept = true;
+      if (E.kind === 'tear') cyber.healSweep(E.p.x - E.n.x * 0.2, E.p.z - E.n.z * 0.2, 1.4, 0.5, Math.atan2(E.n.x, E.n.z), 0.75, 1.85);
+      else cyber.healSweep(E.p.x, E.p.z, COVER_W + 0.1, COVER_T + 0.1, E.yaw || 0, 0.02, COVER_H);
+    }
     if (E.kind === 'tear') {
       E.mesh.material.opacity = Math.min(1, E.t * 5) * (0.8 + 0.2 * Math.sin(G.rt * 23 + i));
       E.mesh.scale.setScalar(Math.max(0.02, 1 - closing));
@@ -2179,7 +2189,7 @@ function updateCageDoors() {
     }
   }
 }
-const CIVS = [];
+const CIVS = []; G.civs = CIVS;
 function makeCiv(x, z, i) {
   const fem = i % 2 === 1;
   // Moth's uncounted: ordinary people in ordinary clothes (no chips, no Census kit)
@@ -2683,6 +2693,7 @@ function renderFrame(dt, rdt) {
   updateCamera(rdt);
   FX.numbers.update(rdt, camera);
   level.update(rdt, camState.look);
+  if (cyber) safe(() => cyber.update(rdt, camState.look, heroCenter()));
   updateUI(rdt);
 }
 const PERF = { js: 0, render: 0, rdt: 0 }; window.__perf = PERF;

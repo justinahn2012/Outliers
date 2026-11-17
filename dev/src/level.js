@@ -209,7 +209,7 @@ function pbr(prefix, rx, ry, extra = {}) {
 
 // ---------- level ----------
 export function buildLevel(scene, world, wet) {
-  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [], fades: [] };
+  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [], fades: [], roofs: [] };
   // Every lamp, neon and lantern registers a light "spot"; only the POOL nearest the camera get a real
   // point light each frame, so the shader cost stays flat however big the world gets.
   const spots = L.spots;
@@ -280,6 +280,7 @@ export function buildLevel(scene, world, wet) {
   const skyMat = new THREE.MeshStandardMaterial({ color: 0x0a0d12, roughness: 0.1, metalness: 0.8, envMapIntensity: 1.4 }), skyLit = new THREE.MeshStandardMaterial({ color: 0x050505, emissive: 0xffc890, emissiveIntensity: 0.55, roughness: 0.2 });
   const scaleUV = (geo, su, sv) => { const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv); return geo; };
   const roofTop = (x0, x1, z0, z1, h) => {
+    L.roofs.push({ x0, x1, z0, z1, h });
     const w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     const top = new THREE.Mesh(scaleUV(new THREE.PlaneGeometry(w, d), w / 6, d / 6), tarMat); top.rotation.x = -Math.PI / 2; top.position.set(cx, h + 0.015, cz); top.receiveShadow = true; scene.add(top);
     const T = 0.28, PH = 0.75;

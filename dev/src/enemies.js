@@ -426,7 +426,7 @@ export function updateEnemyVisual(e, dt) {
   // health bar
   e.hpShow = Math.max(0, e.hpShow - dt);
   const show = !e.dead && e.state !== 'spawn' && (e.hpShow > 0 || e.type === 'auditor' || e.hp < e.maxHp);
-  e.hb.bg.visible = e.hb.fg.visible = show;
+  e.hb.bg.visible = e.hb.fg.visible = show && !G.cyber;     // the cyber layer's ID tags carry health now
   if (show) {
     const w = e.type === 'auditor' ? 1.8 : 0.9;
     const top = 1.25 * s;
@@ -484,7 +484,7 @@ function updateDroneVisual(e, dt) {
   const show = e.hpShow > 0 || big;
   e.hpShow -= dt;
   const w = big ? 3.2 : 0.8, k = clamp(e.hp / e.maxHp, 0, 1);
-  e.hb.bg.visible = e.hb.fg.visible = show && !e.dead;
+  e.hb.bg.visible = e.hb.fg.visible = show && !e.dead && !G.cyber;
   if (show) {
     const y = big ? 1.9 : 0.6;
     _q.copy(e.root.quaternion).invert();
