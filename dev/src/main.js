@@ -179,6 +179,7 @@ async function boot() {
   loadProgress(); applyStats(false); hero.hp = hero.maxHp; hero.focus = hero.maxFocus; buildFragments();
   { const st = ZONES[PROG.checkpoint || 0].start; hero.body.position.set(st[0], 0.85, st[1]); }
   resetProps();
+  syncPowerButtons();
   btn.disabled = false; titleButtons();
   requestAnimationFrame(frame);
 }
@@ -357,7 +358,7 @@ function damageEnemy(e, dmg, dir, force, src) {
     e.half = true; sayList(CHAPTER.lamplighterHalf);
     const S = STEP(); if (S && S.adds) G.waveQueue.push(...S.adds);
   }
-  if (!G.ultState && G.t > (G.ultLock || 0) && src !== 'ult' && src !== 'tick') G.ult = Math.min(100, G.ult + dmg * 0.24 * stat.ultGain());
+  if (!G.ultState && G.t > (G.ultLock || 0) && src !== 'ult' && src !== 'tick') G.ult = hasPower('root') ? Math.min(100, G.ult + dmg * 0.24 * stat.ultGain()) : 0;
   if (src !== 'slam' && src !== 'tick' && src !== 'collide') {
     G.combo++; G.comboT = 2.6; G.stats.hits++;
     G.stats.maxCombo = Math.max(G.stats.maxCombo, G.combo);
@@ -394,7 +395,7 @@ function knockdown(e, dir, force) {
 
 function kill(e, dir, force) {
   e.dead = true; e.hp = 0;
-  G.stats.kills++; if (!G.ultState && G.t > (G.ultLock || 0)) G.ult = Math.min(100, G.ult + 5 * stat.ultGain());
+  G.stats.kills++; if (!G.ultState && G.t > (G.ultLock || 0)) G.ult = hasPower('root') ? Math.min(100, G.ult + 5 * stat.ultGain()) : 0;
   gainXP(e.type === 'auditor' ? 220 : e.type === 'lamplighter' ? 260 : e.type === 'warden' ? 34 : e.type === 'lobber' ? 26 : e.type === 'clerk' ? 16 : 22, e.body.position);
   if (e.type === 'auditor') G.pending.push(() => sayList(CHAPTER.auditorDown));
   sfx.down();
@@ -451,10 +452,189 @@ function grabbables() {
 function liftCost(o) { return (o.kind === 'enemy' ? 12 : o.kind === 'grenade' ? 2 : 3 + o.mass * 0.025) * stat.liftCost(); }
 function holdDrain(o) { return (o.kind === 'enemy' ? 9 : o.kind === 'grenade' ? 1 : 2.5 + o.mass * 0.032) * stat.liftCost(); }
 
+// ======================= rewrite: walls and street =======================
+// She writes into the record directly (Rule 2). Every edit costs heat (Rule 3), and the city agrees it back once
+// nothing needs the new version (Rule 4): a torn wall heals and the torn piece was never there; raised cover sinks.
+const EDITS = [];
+const editTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  x.fillStyle = '#05040a'; x.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 70; i++) { const v = Math.random(); x.fillStyle = v < 0.5 ? 'rgba(123,92,255,0.55)' : v < 0.8 ? 'rgba(80,50,190,0.5)' : 'rgba(220,210,255,0.8)'; x.fillRect((Math.random() * 16 | 0) * 4, (Math.random() * 16 | 0) * 4, 4, 4); }
+  x.strokeStyle = 'rgba(165,139,255,0.9)'; x.lineWidth = 1;
+  for (let k = 0; k <= 64; k += 16) { x.beginPath(); x.moveTo(k + 0.5, 0); x.lineTo(k + 0.5, 64); x.stroke(); x.beginPath(); x.moveTo(0, k + 0.5); x.lineTo(64, k + 0.5); x.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+const editLineMat = new THREE.LineBasicMaterial({ color: new THREE.Color(1.4, 0.9, 3.2), toneMapped: false, transparent: true });
+const slabMat = new THREE.MeshStandardMaterial({ color: 0x6f6a64, roughness: 0.92, metalness: 0.05 });
+const holeGeo = new THREE.BoxGeometry(1.45, 1.25, 0.5);
+const COVER_W = 2.8, COVER_H = 1.75, COVER_T = 0.4;
+const coverGeo = new THREE.BoxGeometry(COVER_W, COVER_H, COVER_T).translate(0, COVER_H / 2, 0);
+function edgeLines(geo) { return new THREE.LineSegments(new THREE.EdgesGeometry(geo), editLineMat); }
+function noFocus() {
+  const hp = heroCenter(); num(_v2.set(hp.x, hp.y + 1.6, hp.z), 'NO FOCUS', 'psi', 0.8);
+  ui.focusbar.classList.add('low'); setTimeout(() => ui.focusbar.classList.remove('low'), 400);
+}
+function spendHeat(c) { if (hero.focus < c) { noFocus(); return false; } hero.focus -= c; hero.focusDelay = 0.8; return true; }
+// tall static boxes are walls (buildings, yard walls, sheds); gates and raised cover are not
+function wallBodies() {
+  const gates = new Set(level.gates.map(g => g.body));
+  return world.bodies.filter(b => b.mass === 0 && (b.collisionFilterGroup & GRP.STATIC) && !gates.has(b) && !(b.userData && b.userData.edit) &&
+    b.shapes.length === 1 && b.shapes[0] instanceof CANNON.Box && b.shapes[0].halfExtents.y >= 1.1 && Math.max(b.shapes[0].halfExtents.x, b.shapes[0].halfExtents.z) >= 0.9 &&
+    b.position.y + b.shapeOffsets[0].y - b.shapes[0].halfExtents.y < 0.6);
+}
+function toBodyLocal(b, x, y, z) {
+  const r = b.quaternion.inverse().vmult(new CANNON.Vec3(x - b.position.x, y - b.position.y, z - b.position.z));
+  return r.vsub(b.shapeOffsets[0]);
+}
+function boxDistXZ(b, p) {
+  const he = b.shapes[0].halfExtents, l = toBodyLocal(b, p.x, b.position.y, p.z);
+  return Math.hypot(Math.max(0, Math.abs(l.x) - he.x), Math.max(0, Math.abs(l.z) - he.z));
+}
+function gateDist(g, p) {
+  const lo = Math.min(g.x0, g.x1), hi = Math.max(g.x0, g.x1);
+  return g.alongZ ? Math.hypot(p.x - g.z, p.z - clamp(p.z, lo, hi)) : Math.hypot(p.x - clamp(p.x, lo, hi), p.z - g.z);
+}
+function rewriteAt(id, x, y) {
+  if (!api.canRewrite()) return false;
+  const p1 = screenToPlane(x, y, 1.2, new THREE.Vector3()), p0 = screenToPlane(x, y, 0, new THREE.Vector3());
+  if (!p1 || !p0) return false;
+  for (const g of level.gates) if (!g.open && (gateDist(g, p1) < 1.6 || gateDist(g, p0) < 1.6)) { rewriteGate(g, gateDist(g, p1) < gateDist(g, p0) ? p1 : p0); return 'done'; }
+  let wall = null, wd = 1e9;
+  for (const b of wallBodies()) { const d = Math.min(boxDistXZ(b, p1), boxDistXZ(b, p0) + 0.3); if (d < wd) { wd = d; wall = b; } }
+  const street = zoneAt(p0.x, p0.z) >= 0;
+  if (wall && (wd < 0.5 || (!street && wd < 7))) return tearWall(id, wall, wd < 0.5 && boxDistXZ(wall, p1) < 0.5 ? p1 : p0, x, y);
+  if (street) return raiseCover(p0) ? 'done' : false;
+  return false;
+}
+// a cordon is renewed by every chip on station: she can write it open, but it's written back the same instant
+function rewriteGate(g, at) {
+  if (!spendHeat(4)) return;
+  g.flicker();
+  const n = G.enemies.filter(e => e.alive && !e.dead).length + RELAYS.filter(R => R.alive).length;
+  num(_v2.set(at.x, 2.6, at.z), n ? `RENEWED ×${n}` : 'SWEEP STILL OPEN', 'psi', 1.3);
+  voxelPuff(at.x, 1.6, at.z, 14, 1.5, 1.5, 0.08, 0.5); sfx.stamp(); G.glitch = Math.max(G.glitch || 0, 0.25);
+  if (!G.saidGate) { G.saidGate = true; sayList(CHAPTER.rewriteGate); }
+}
+function tearWall(id, b, touch, sx, sy) {
+  if (G.holds.size >= 2) return false;
+  const he = b.shapes[0].halfExtents, hp = heroCenter();
+  const hl = toBodyLocal(b, hp.x, b.position.y, hp.z), tl = toBodyLocal(b, touch.x, b.position.y, touch.z);
+  // the face that looks at her, at the spot she touched (but within her reach)
+  let nx = 0, nz = 0;
+  if (Math.abs(hl.x) - he.x > Math.abs(hl.z) - he.z) nx = Math.sign(hl.x) || 1; else nz = Math.sign(hl.z) || 1;
+  const lat = (t, h, hv) => h > 1.0 ? clamp(clamp(t, hv - 8, hv + 8), -h + 0.85, h - 0.85) : 0;
+  const L = new CANNON.Vec3(nx ? nx * he.x : lat(tl.x, he.x, hl.x), 0, nz ? nz * he.z : lat(tl.z, he.z, hl.z)).vadd(b.shapeOffsets[0]);
+  const W = b.quaternion.vmult(L).vadd(b.position), N = b.quaternion.vmult(new CANNON.Vec3(nx, 0, nz));
+  const n = new THREE.Vector3(N.x, 0, N.z).normalize(), face = new THREE.Vector3(W.x, 1.3, W.z);
+  if (Math.hypot(face.x - hp.x, face.z - hp.z) > TUNE.GRAB_RANGE * stat.reach()) { num(_v2.set(face.x, 2.4, face.z), 'TOO FAR', 'psi', 0.8); return 'done'; }
+  if (!spendHeat(10 * stat.liftCost())) return 'done';
+  const yaw = Math.atan2(n.x, n.z);
+  const o = addProp('wallslab', face.x + n.x * 0.5, face.z + n.z * 0.5, yaw, 1.3, { size: new THREE.Vector3(1.3, 1.05, 0.6), mat: slabMat });
+  o.mesh.children[0].add(edgeLines(o.mesh.children[0].geometry));
+  // the gap is a box half sunk into the wall, so it reads from the top-down camera too (lane walls are seen edge-on)
+  const hole = new THREE.Mesh(holeGeo, new THREE.MeshBasicMaterial({ map: editTex, color: new THREE.Color(1.5, 1.1, 2.6), toneMapped: false, transparent: true, depthWrite: false }));
+  hole.position.set(face.x - n.x * 0.2, 1.3, face.z - n.z * 0.2); hole.rotation.y = yaw; hole.renderOrder = 6; hole.add(edgeLines(holeGeo)); scene.add(hole);
+  FX.rings.spawn(face.x + n.x * 0.5, 0.06, face.z + n.z * 0.5, 0.2, 1.8, 0.4, 0x9b7bff, 1);
+  const E = { kind: 'tear', mesh: hole, prop: o, t: 0, life: 10, p: face.clone(), n };
+  EDITS.push(E); o.edit = E;
+  voxelPuff(face.x + n.x * 0.5, 1.3, face.z + n.z * 0.5, 30, 3.5, 2.5, 0.1, 0.8);
+  FX.dust(_v2.set(face.x + n.x * 0.6, 1.0, face.z + n.z * 0.6), 6, 2, 0.9);
+  sfx.impact(0.8, false); sfx.stamp(); addTrauma(0.16); G.glitch = Math.max(G.glitch || 0, 0.2);
+  num(_v2.set(face.x + n.x, 2.6, face.z + n.z), 'REWRITE', 'psi', 0.9);
+  startHold(id, o, sx, sy);
+  return 'grab';
+}
+function raiseCover(p) {
+  const hp = heroCenter();
+  let dx = p.x - hp.x, dz = p.z - hp.z, d = Math.hypot(dx, dz);
+  if (d < 0.05) { dx = Math.sin(hero.yaw); dz = Math.cos(hero.yaw); d = 1; }
+  const ux = dx / d, uz = dz / d, dd = clamp(d, 1.8, 11);
+  const cx = hp.x + ux * dd, cz = hp.z + uz * dd;
+  if (zoneAt(cx, cz) < 0) return false;
+  if (!spendHeat(14 * stat.liftCost())) return true;
+  const covers = EDITS.filter(E => E.kind === 'cover');
+  if (covers.length >= 2) covers[0].t = Math.max(covers[0].t, covers[0].life - 0.5);   // the oldest is agreed back first
+  const yaw = Math.atan2(ux, uz);
+  const body = new CANNON.Body({ mass: 0, material: G.groundMat, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL });
+  body.addShape(new CANNON.Box(new CANNON.Vec3(COVER_W / 2, COVER_H / 2, COVER_T / 2))); body.position.set(cx, COVER_H / 2, cz);
+  body.quaternion.setFromEuler(0, yaw, 0); body.userData = { edit: true }; world.addBody(body);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x0b0914, roughness: 0.3, metalness: 0.3, emissive: 0xffffff, emissiveMap: editTex, emissiveIntensity: 1.1 });
+  const mesh = new THREE.Mesh(coverGeo, mat); mesh.position.set(cx, 0, cz); mesh.rotation.y = yaw; mesh.scale.y = 0.02; mesh.castShadow = true; mesh.add(edgeLines(coverGeo)); scene.add(mesh);
+  EDITS.push({ kind: 'cover', mesh, body, mat, t: 0, life: 8, p: new THREE.Vector3(cx, 0, cz) });
+  // whatever is standing where the street stands up gets thrown off it
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  for (const e of G.enemies) {
+    if (!e.alive || e.dead || e.def.drone) continue;
+    const ox = e.body.position.x - cx, oz = e.body.position.z - cz, lx = ox * c - oz * s, lz = ox * s + oz * c, r = e.radius || 0.5;
+    if (Math.abs(lx) < COVER_W / 2 + r && Math.abs(lz) < COVER_T / 2 + r + 0.2) {
+      const dir = new THREE.Vector3(s * (Math.sign(lz) || 1), 0, c * (Math.sign(lz) || 1));
+      e.body.velocity.y = 8; damageEnemy(e, 14, dir, 7, 'hit');
+    }
+  }
+  for (const o of G.props) {
+    if (!o.alive || o.held) continue;
+    const ox = o.body.position.x - cx, oz = o.body.position.z - cz, lx = ox * c - oz * s, lz = ox * s + oz * c;
+    if (Math.abs(lx) < COVER_W / 2 + o.hRad && Math.abs(lz) < COVER_T / 2 + o.hRad) { o.body.wakeUp(); o.body.velocity.set(s * Math.sign(lz || 1) * 4, 7, c * Math.sign(lz || 1) * 4); }
+  }
+  for (let k = 0; k < 3; k++) voxelPuff(cx + (k - 1) * Math.cos(yaw) * 1.1, 0.2, cz - (k - 1) * Math.sin(yaw) * 1.1, 10, 1.2, 4, 0.1, 0.6);
+  FX.rings.spawn(cx, 0.06, cz, 0.3, 2.4, 0.4, 0x9b7bff, 1); FX.dust(_v2.set(cx, 0.3, cz), 6, 2, 1);
+  sfx.impact(0.9, false); sfx.stamp(); addTrauma(0.18);
+  return true;
+}
+function letGoOf(o) {
+  if (!o.held) return;
+  endHold(o.held); restoreGroup(o);
+  for (const [id, p] of input.pointers) if (p.role === 'grab' && !G.holds.has(id)) input.pointers.delete(id);
+}
+function updateEdits(dt) {
+  for (let i = EDITS.length - 1; i >= 0; i--) {
+    const E = EDITS[i]; E.t += dt;
+    const closing = Math.max(0, E.t - (E.life - 0.8)) / 0.8;
+    if (E.kind === 'tear') {
+      E.mesh.material.opacity = Math.min(1, E.t * 5) * (0.8 + 0.2 * Math.sin(G.rt * 23 + i));
+      E.mesh.scale.setScalar(Math.max(0.02, 1 - closing));
+      if (closing > 0 && Math.random() < 0.5) voxelPuff(E.p.x + E.n.x * 0.1, 1.3 + rand(-0.5, 0.5), E.p.z + E.n.z * 0.1, 1, 0.4, 0.4, 0.07, 0.4);
+      if (E.t >= E.life) {
+        // agreed back: the wall is whole, so the piece of it she's holding was never torn out
+        const o = E.prop;
+        if (o && o.alive) { letGoOf(o); const q = o.body.position; voxelPuff(q.x, q.y, q.z, 24, 2.2, 2, 0.1, 0.7); removeProp(o); }
+        scene.remove(E.mesh); E.mesh.material.dispose(); EDITS.splice(i, 1);
+      }
+    } else {
+      const rise = Math.min(1, E.t / 0.2);
+      E.mesh.scale.y = Math.max(0.02, rise * (1 - closing));
+      E.mat.emissiveIntensity = 0.9 + 0.3 * Math.sin(G.rt * 9 + i) + (E.t < 0.3 ? 2 * (0.3 - E.t) / 0.3 : 0);
+      if (closing > 0 && E.body.world) world.removeBody(E.body);
+      if (closing > 0 && Math.random() < 0.6) voxelPuff(E.p.x + rand(-1.2, 1.2), 0.2 + rand(0, 1.3) * (1 - closing), E.p.z + rand(-1.2, 1.2), 1, 0.5, 1, 0.08, 0.4);
+      if (E.t >= E.life) { if (E.body.world) world.removeBody(E.body); scene.remove(E.mesh); E.mat.dispose(); EDITS.splice(i, 1); }
+    }
+  }
+}
+function clearEdits() {
+  for (const E of EDITS) { scene.remove(E.mesh); if (E.body && E.body.world) world.removeBody(E.body); if (E.prop && E.prop.alive) { letGoOf(E.prop); removeProp(E.prop); } }
+  EDITS.length = 0;
+}
+
 const api = {
   audio() { initAudio(); },
   tryGrab(id, x, y) {
     if (hero.dead || G.ultState) return false;
+    {
+      // bullets first: a generous touch target, since they're small and fast
+      let best = null, bd = 1e9;
+      for (const B of G.bolts) {
+        if (B.caught || B.hero) continue;
+        toScreen(B.p, _sp); if (_sp.z > 1) continue;
+        const d = Math.hypot(_sp.x - x, _sp.y - y);
+        if (d < 70 && d < bd) { bd = d; best = B; }
+      }
+      if (best && hero.focus >= 2) {
+        hero.focus -= 2; hero.focusDelay = 0.4;
+        catchBolt(best, id);
+        for (const B of G.bolts) { if (B === best || B.caught || B.hero) continue; toScreen(B.p, _sp); if (_sp.z <= 1 && Math.hypot(_sp.x - x, _sp.y - y) < 110) catchBolt(B, id); }
+        return true;
+      }
+    }
     if (G.holds.size >= 2) return false;
     const hp = heroCenter();
     let best = null, bestScore = 1e9;
@@ -485,12 +665,24 @@ const api = {
   },
   moveGrab(id, x, y) { const h = G.holds.get(id); if (h) { h.sx = x; h.sy = y; } },
   releaseGrab(id, x, y, vx, vy) {
+    const mine = G.bolts.filter(B => B.caught === id);
+    if (mine.length) {
+      const sp = Math.hypot(vx, vy); let dir = null;
+      if (sp >= TUNE.FLICK_MIN) {
+        const a = screenToPlane(x, y, 1, new THREE.Vector3()), c = screenToPlane(x + vx * 0.06, y + vy * 0.06, 1, new THREE.Vector3());
+        if (a && c) dir = new THREE.Vector3(c.x - a.x, 0, c.z - a.z);
+      }
+      mine.forEach((B, k) => setTimeout(() => { if (G.bolts.includes(B)) sendBolt(B, dir); }, k * 60));
+      return;
+    }
     const h = G.holds.get(id); if (!h) return;
     endHold(h);
     const sp = Math.hypot(vx, vy);
     if (sp >= TUNE.FLICK_MIN) throwObj(h.obj, x, y, vx, vy, sp);
     else dropObj(h.obj);
   },
+  canRewrite() { return hasPower('rewrite') && G.mode === 'play' && !G.ultState && !hero.dead; },
+  rewrite(id, x, y) { return rewriteAt(id, x, y); },
   surge() { doSurge(); },
   ult() { startUlt(); },
   pause() { togglePause(); },
@@ -862,7 +1054,29 @@ const boltGeo = new THREE.CapsuleGeometry(0.06, 0.55, 3, 6); boltGeo.rotateX(Mat
 const boltMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 2.2, 0.5), toneMapped: false });
 const rayResult = new CANNON.RaycastResult();
 const _cf = new CANNON.Vec3(), _ct = new CANNON.Vec3();
-function spawnBolt(from, dir, dmg = 7) { spawnBolt_(from, dir); G.bolts[G.bolts.length - 1].dmg = dmg; }
+function spawnBolt(from, dir, dmg = 7, shooter = null) { spawnBolt_(from, dir); const B = G.bolts[G.bolts.length - 1]; B.dmg = dmg; B.shooter = shooter; }
+// --- caught bullets: a bullet is a tiny record, so stopping one costs almost nothing (Rule 3) ---
+const boltMatHero = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 0.9, 3.6), toneMapped: false });
+function catchBolt(B, owner) {
+  B.caught = owner; B.v0 = B.v.clone(); B.v.set(0, 0, 0); B.m.material = boltMatHero; B.life = Math.max(B.life, 6);
+  FX.rings.spawn(B.p.x, B.p.y, B.p.z, 0.1, 0.8, 0.3, 0x9b7bff, 1); FX.psi(B.p, 6, 2, 0.15, 0.3); sfx.stamp();
+  num(_v2.set(B.p.x, B.p.y + 0.5, B.p.z), 'CAUGHT', 'psi', 0.7);
+  if (!G.saidCatch) { G.saidCatch = true; sayList([['null', 'Return to sender.']]); }
+}
+// let go: with a flick it goes where she flicks it (aim assist), without one it goes home to whoever fired it
+function sendBolt(B, dir) {
+  B.caught = null; B.hero = true; B.life = 2.2; B.dmg = 22;
+  let target = null;
+  if (dir) target = aimAssist(B.p, dir, null);
+  if (!target && B.shooter && B.shooter.alive && !B.shooter.dead) target = B.shooter;
+  if (!target) target = aimAssist(B.p, (B.v0 ? B.v0.clone().multiplyScalar(-1) : new THREE.Vector3(0, 0, -1)), null);
+  let d;
+  if (target) { const tp = target.body.position; d = new THREE.Vector3(tp.x - B.p.x, tp.y + 0.2 - B.p.y, tp.z - B.p.z).normalize(); }
+  else d = dir ? dir.clone().normalize() : (B.v0 ? B.v0.clone().multiplyScalar(-1).normalize() : new THREE.Vector3(0, 0, -1));
+  B.v.copy(d).multiplyScalar(32);
+  B.m.lookAt(B.p.x + d.x, B.p.y + d.y, B.p.z + d.z);
+  sfx.bolt();
+}
 function spawnBolt_(from, dir) {
   const m = new THREE.Mesh(boltGeo, boltMat); m.position.copy(from); scene.add(m);
   m.lookAt(from.x + dir.x, from.y + dir.y, from.z + dir.z);
@@ -874,7 +1088,42 @@ function updateBolts(dt) {
   for (let i = G.bolts.length - 1; i >= 0; i--) {
     const B = G.bolts[i];
     const px = B.p.x, py = B.p.y, pz = B.p.z;
+    if (B.caught) {
+      B.life -= dt * 0.25;
+      B.m.position.set(B.p.x + (Math.random() - 0.5) * 0.03, B.p.y + Math.sin(G.rt * 6 + i) * 0.03, B.p.z);
+      if (Math.random() < 0.3) FX.add.emit(B.p.x, B.p.y, B.p.z, 0, 0.2, 0, 0.9, 0.5, 2.2, 0.15, 0.25, 0.02);
+      if (B.life <= 0) { FX.psi(B.p, 6, 2, 0.15, 0.3); scene.remove(B.m); G.bolts.splice(i, 1); }
+      continue;
+    }
     B.p.addScaledVector(B.v, dt); B.life -= dt; B.m.position.copy(B.p);
+    if (B.hero) {
+      if (Math.random() < 0.8) FX.add.emit(B.p.x, B.p.y, B.p.z, 0, 0, 0, 0.9, 0.5, 2.4, 0.2, 0.22, 0.02);
+      let hit = B.life <= 0;
+      if (!hit) for (const e of G.enemies) {
+        if (e.dead || !e.alive) continue;
+        const ep = e.body.position, r = (e.radius || 0.6) * 0.8 + 0.25;
+        if (segSegDist2(px, py, pz, B.p.x, B.p.y, B.p.z, ep.x, ep.y - (e.hh || 0.8) * 0.8, ep.z, ep.x, ep.y + (e.hh || 0.8) * 0.8, ep.z) < r * r) {
+          hit = true;
+          const dir = B.v.clone().setY(0).normalize();
+          if (e.shieldUp) {
+            const fx = Math.sin(e.yaw), fz = Math.cos(e.yaw);
+            if (-(dir.x * fx + dir.z * fz) > 0.25) { FX.sparks(B.p, 10, 5, [0.8, 0.6, 1]); sfx.block(); num(_v2.set(ep.x, ep.y + 1.4, ep.z), 'SHIELDED', 'psi', 0.7); break; }
+          }
+          damageEnemy(e, B.dmg, dir, 6, 'hit');
+          FX.sparks(B.p, 14, 6, [0.8, 0.6, 1]); FX.psi(B.p, 8, 3, 0.2, 0.4); sfx.impact(0.5, true); addTrauma(0.08);
+          if (B.shooter === e) num(_v2.set(ep.x, ep.y + 1.6, ep.z), 'RETURNED', 'psi', 0.9);
+          break;
+        }
+      }
+      if (!hit) {
+        _cf.set(px, py, pz); _ct.set(B.p.x, B.p.y, B.p.z); rayResult.reset();
+        world.raycastClosest(_cf, _ct, { collisionFilterMask: GRP.GROUND | GRP.STATIC, skipBackfaces: true }, rayResult);
+        if (rayResult.hasHit) { hit = true; FX.sparks(B.p, 8, 4, [0.8, 0.6, 1]); }
+        for (const R of RELAYS) if (R.alive && Math.hypot(R.x - B.p.x, R.z - B.p.z) < 0.9 && B.p.y < 7.5) { hit = true; R.lastHit = -9; hitRelay(R, 12, B.p.clone()); }
+      }
+      if (hit) { scene.remove(B.m); G.bolts.splice(i, 1); }
+      continue;
+    }
     if (Math.random() < 0.7) FX.add.emit(B.p.x, B.p.y, B.p.z, 0, 0, 0, 1.6, 0.8, 0.2, 0.18, 0.2, 0.02);
     let dead = B.life <= 0;
     // blocked by anything Null holds in the line of fire (judged top-down, like the player sees it)
@@ -1037,7 +1286,7 @@ function aiBrain(e, dt, dist, nx, nz, hp) {
         return [tx / td * sp, tz / td * sp];
       }
       // nothing to stamp: buzz her and zap
-      if (e.atkCD <= 0 && dist < 9) { e.atkCD = rand(2.6, 3.6); spawnBolt(new THREE.Vector3(b.position.x, b.position.y - 0.2, b.position.z), new THREE.Vector3(hp.x - b.position.x, 1.1 - b.position.y, hp.z - b.position.z).normalize(), 4); }
+      if (e.atkCD <= 0 && dist < 9) { e.atkCD = rand(2.6, 3.6); spawnBolt(new THREE.Vector3(b.position.x, b.position.y - 0.2, b.position.z), new THREE.Vector3(hp.x - b.position.x, 1.1 - b.position.y, hp.z - b.position.z).normalize(), 4, e); }
       const want = dist > 4 ? 1 : dist < 2.5 ? -1 : 0;
       return [nx * sp * want - nz * e.strafe * 1.5, nz * sp * want + nx * e.strafe * 1.5];
     }
@@ -1096,7 +1345,7 @@ function aiBrain(e, dt, dist, nx, nz, hp) {
         const from = gunPos(e);
         const lead = hero.body.velocity;
         const tgt = new THREE.Vector3(hp.x + lead.x * 0.22 + rand(-0.25, 0.25), 1.15, hp.z + lead.z * 0.22 + rand(-0.25, 0.25));
-        spawnBolt(from.clone(), tgt.sub(from).normalize());
+        spawnBolt(from.clone(), tgt.sub(from).normalize(), 7, e);
         FX.sparks(from, 5, 3, [1, 0.7, 0.2], 0.08); FX.flash(from, 0xffb050, 6);
         e.shots++;
       }
@@ -1205,7 +1454,7 @@ function lampCounted(e, hp) {
     if (G.runId !== run || e.dead || !e.alive) return;
     const b = e.body, h = heroCenter();
     const from = new THREE.Vector3(b.position.x, b.position.y - 1, b.position.z);
-    spawnBolt(from, new THREE.Vector3(h.x - from.x + rand(-0.5, 0.5), 1.1 - from.y, h.z - from.z + rand(-0.5, 0.5)).normalize(), 6);
+    spawnBolt(from, new THREE.Vector3(h.x - from.x + rand(-0.5, 0.5), 1.1 - from.y, h.z - from.z + rand(-0.5, 0.5)).normalize(), 6, e);
   }, 150 + k * 130);
 }
 function gunPos(e) {
@@ -1227,7 +1476,31 @@ function voxelPuff(x, y, z, n, sp, up, size = 0.12, life = 0.7) {
 }
 function glitchEnemy(e, t = 0.4) { e.glitchT = Math.max(e.glitchT || 0, t); }
 
+const hasPower = (k) => !!(PROG.unlock && PROG.unlock[k]);
+const POWER_INFO = {
+  surge: { name: 'SURGE', sub: 'BREAKS LOCK ORDERS · KNOCKS EVERYTHING BACK', lines: () => CHAPTER.unlockSurge },
+  rewrite: { name: 'REWRITE', sub: 'HOLD A WALL: TEAR A PIECE OUT · HOLD THE STREET: RAISE COVER', lines: () => CHAPTER.unlockRewrite },
+  root: { name: 'ROOT ACCESS', sub: 'TIME STOPS · EVERYTHING GETS TAGGED · LET GO', lines: () => CHAPTER.unlockRoot },
+};
+function unlockPower(k, quiet = false) {
+  if (hasPower(k)) return;
+  PROG.unlock = PROG.unlock || {}; PROG.unlock[k] = true; saveProgress();
+  syncPowerButtons();
+  if (quiet) return;
+  const I = POWER_INFO[k];
+  sayList(I.lines());
+  const btn = k === 'root' ? ui.ult : k === 'surge' ? ui.surge : null;
+  setTimeout(() => { banner(I.name, I.sub, 2.6); sfx.levelUp(); G.glitch = Math.max(G.glitch || 0, 0.5); if (btn) { btn.classList.add('fresh'); setTimeout(() => btn.classList.remove('fresh'), 6000); } }, 2200);
+  if (k === 'root') G.ult = 100;          // the first one is free
+}
+// restarting past the point where she remembered a power keeps it
+function syncUnlocksForCheckpoint(z) { if (z >= 1) unlockPower('surge', true); if (z >= 3) unlockPower('rewrite', true); if (z >= 7) unlockPower('root', true); }
+function syncPowerButtons() {
+  ui.surge.style.display = hasPower('surge') ? '' : 'none';
+  ui.ult.style.display = hasPower('root') ? '' : 'none';
+}
 function doSurge() {
+  if (!hasPower('surge')) return;
   if (G.mode !== 'play' || hero.dead || G.ultState || G.surge) return;
   const hp = heroCenter();
   if (G.surgeCD > 0) return;
@@ -1330,6 +1603,7 @@ function surgeRelease(S) {
 // it all hangs in the air, then she sends every tagged thing flying at once.
 const ROOT_R = 18, ROOT_SCAN = 0.85;
 function startUlt() {
+  if (!hasPower('root')) return;
   if (G.mode !== 'play' || hero.dead || G.ultState || G.ult < 100) return;
   G.ult = 0;
   for (const h of [...G.holds.values()]) { endHold(h); dropObj(h.obj); }
@@ -1397,7 +1671,7 @@ function updateUlt(rdt, dt) {
     const fr = Front.radiusAt(ROOT_R, U.t / ROOT_SCAN);
     for (let i = G.bolts.length - 1; i >= 0; i--) {
       const B = G.bolts[i];
-      if (Math.hypot(B.p.x - U.c.x, B.p.z - U.c.z) < fr) { voxelPuff(B.p.x, B.p.y, B.p.z, 6, 2, 2, 0.07, 0.5); scene.remove(B.m); G.bolts.splice(i, 1); }
+      if (!B.caught && !B.hero && Math.hypot(B.p.x - U.c.x, B.p.z - U.c.z) < fr) catchBolt(B, 'ult');
     }
     for (let i = 0; i < 5; i++) { const a = Math.random() * 6.28; Powers.voxels.emit(U.c.x + Math.cos(a) * fr, 0.1, U.c.z + Math.sin(a) * fr, 0, rand(1.5, 4), 0, rand(0.08, 0.16), 0.6, 0.9, 0.5, 2.4, 2); }
     hover(0);
@@ -1435,6 +1709,7 @@ function updateUlt(rdt, dt) {
       Powers.walls.spawn(hp, 19, 2.8, 0.75, new THREE.Color(0.9, 0.5, 2.4));
       Powers.beams.spawn(hp, 1.2, 16, 0.5, new THREE.Color(1.2, 0.9, 2.4));
       Powers.reticles.clear(true);
+      G.bolts.filter(B => B.caught === 'ult').forEach((B, k) => setTimeout(() => { if (G.bolts.includes(B)) sendBolt(B, null); }, k * 40));
       Shock.fire(ch, 0.9, 0.95, 0.06);
       G.bloomKick = 0.5; camState.punch = 1.4;
       for (let i = 0; i < 220; i++) {
@@ -1532,6 +1807,7 @@ function ensureZoneProps(center) {
   }
 }
 function resetProps() {
+  clearEdits();
   for (const o of [...G.props]) removeProp(o);
   zoneLoaded.clear(); clearCages(); clearRelays();
   ensureZoneProps(PROG.checkpoint || 0);
@@ -1556,6 +1832,7 @@ function startNextStep() {
   G.waveQueue = [...(S.list || [])]; spawnTimer = 0.4; G.reinforced = false;
   G.mission = { kind: S.kind, t: 0, trickleT: S.every || 0, done: false };
   banner(S.sub, '', 1.9);
+  if (S.unlock) unlockPower(S.unlock);
   if (S.say) sayList(S.say);
   if (S.kind === 'relays') G.mission.target = RELAYS.length;
   if (S.kind === 'rescue') G.mission.target = CAGES.length;
@@ -1606,6 +1883,7 @@ function updateWaves(dt) {
       M.trickleT -= dt;
       if (M.trickleT <= 0 && aliveCount() + G.waveQueue.length < (S.cap || 5)) { M.trickleT = S.every; G.waveQueue.push(S.trickle[Math.floor(Math.random() * S.trickle.length)]); }
     }
+    if (S.unlockAt && M.left > 0 && M.left <= S.unlockAt[1]) unlockPower(S.unlockAt[0]);
     if (S.kind === 'lockdown' && M.left > 0) { M.left -= dt; if (M.left <= 0) { banner("IT'S HERE", 'CLEAR THE YARD', 1.6); sfx.radio(); } }
     if (G.waveQueue.length) {
       spawnTimer -= dt;
@@ -2124,7 +2402,7 @@ function titleButtons() {
 let confirmNew = false, armWasPaused = false;
 $('newbtn').addEventListener('click', () => {
   if (!confirmNew) { confirmNew = true; $('newbtn').textContent = 'TAP AGAIN TO WIPE SAVE'; return; }
-  resetAll(); confirmNew = false; $('newbtn').textContent = 'START OVER (WIPES SAVE)'; applyStats(false); titleButtons(); sfx.ui();
+  resetAll(); confirmNew = false; $('newbtn').textContent = 'START OVER (WIPES SAVE)'; applyStats(false); syncPowerButtons(); titleButtons(); sfx.ui();
 });
 function openArm() {
   armWasPaused = G.paused;
@@ -2141,6 +2419,8 @@ function renderArm() {
   $('armpts').textContent = PROG.points > 0 ? `LEVEL ${PROG.level} · ${PROG.points} INK TO SPEND` : `LEVEL ${PROG.level} · ${Math.round(PROG.xp)} / ${xpToNext(PROG.level)} XP TO NEXT`;
   $('armlist').innerHTML = SKILLS.map(sk => {
     const r = rank(sk.id), marks = '|'.repeat(r) + '<i>' + '|'.repeat(MAX_RANK - r) + '</i>';
+    const gate = sk.id === 'surge' ? 'surge' : sk.id === 'root' ? 'root' : null;
+    if (gate && !hasPower(gate)) return `<div class="sk locked"><div class="t"><div class="n">? ? ?</div><div class="d">A power you haven't remembered yet.</div></div><div class="r"><i>|||</i></div><button disabled>LOCKED</button></div>`;
     return `<div class="sk"><div class="t"><div class="n">${sk.ink}</div><div class="d">${sk.what}</div></div><div class="r">${marks}</div><button data-sk="${sk.id}" ${PROG.points > 0 && r < MAX_RANK ? '' : 'disabled'}>INK</button></div>`;
   }).join('');
   $('armtally').textContent = 'IRIS CALLOWAY. THAT’S YOU.  ' + tally(PROG.done ? 42 : 41);
@@ -2152,6 +2432,7 @@ $('armclose').addEventListener('click', () => closeArm());
 
 function beginRun() {
   const from = PROG.checkpoint || 0;
+  syncUnlocksForCheckpoint(from); syncPowerButtons();
   G.mode = 'intro'; camState.init = false;
   ui.top.style.display = 'flex'; ui.btns.style.display = 'flex';
   G.unlocked = from; setGates(from);
@@ -2210,6 +2491,7 @@ function stepGame(dt, rdt) {
     safe(updateThrown, dt);
     safe(updateGrenades, dt);
     safe(updateBolts, dt);
+    safe(updateEdits, dt);
     safe(updateWaves, dt);
     safe(updateGuide, dt);
     safe(updateColumns, dt);
@@ -2263,16 +2545,19 @@ const PERF = { js: 0, render: 0, rdt: 0 }; window.__perf = PERF;
 boot();
 window.__G = G; // debug hook
 window.__dbg = {
+  edits: () => EDITS.map(E => E.kind), ageEdits: (t) => { for (const E of EDITS) E.t += t; }, rewriteWorld: (x, y, z) => { toScreen(new THREE.Vector3(x, y, z), _sp); return rewriteAt(99, _sp.x, _sp.y); }, gates: () => level.gates.map(g => [g.pos.x, g.pos.z, g.open]), heat: () => hero.focus,
+  wallNear: () => { const hp = heroCenter(); let best = null, bd = 1e9; for (const b of wallBodies()) { const d = boxDistXZ(b, hp); if (d < bd) { bd = d; best = b; } } return best ? [best.position.x, best.position.z, best.shapes[0].halfExtents.x, best.shapes[0].halfExtents.z, bd] : null; },
   toScreen: (x, y, z) => { const o = {}; toScreen({ x, y, z }, o); return [o.x, o.y]; },
   spawn: (t, x, z) => { const e = spawnEnemy(t, x, z); attach(e); return G.enemies.length; },
-  zone: (i) => { for (const e of [...G.enemies]) removeEnemy(e); G.waveQueue = []; G.chase = null; G.mode = 'play'; G.unlocked = i; setGates(i); ensureZoneProps(i); const st = ZONES[i].start; hero.body.position.set(st[0], 0.85, st[1]); camState.init = false; enterZone(i); },
+  zone: (i) => { syncUnlocksForCheckpoint(i); for (const e of [...G.enemies]) removeEnemy(e); G.waveQueue = []; G.chase = null; G.mode = 'play'; G.unlocked = i; setGates(i); ensureZoneProps(i); const st = ZONES[i].start; hero.body.position.set(st[0], 0.85, st[1]); camState.init = false; enterZone(i); },
   clearZone: () => { for (const e of [...G.enemies]) removeEnemy(e); G.waveQueue = []; G.chase = null; G.stepI = ZD(G.zone).steps.length - 1; zoneCleared(); },
   step: () => G.mission,
   xp: (n) => gainXP(n),
   skipBreak: () => { if (zoneBreak > 0) zoneBreak = 0.01; spawnTimer = 0; },
   arm: () => openArm(),
   ending: () => startEnding(),
-  surge: () => doSurge(), ult: () => { G.ult = 100; startUlt(); },
+  surge: () => { unlockPower('surge', true); doSurge(); }, ult: () => { unlockPower('root', true); G.ult = 100; startUlt(); },
+  unlock: (k) => unlockPower(k),
   grabEnemy: () => { const e = G.enemies.find(e => !e.dead && e.def.grip && e.state !== 'spawn'); if (!e) return false; startHold(77, e, G.W / 2, G.H / 2); return true; },
   release: (vx, vy) => { const h = G.holds.get(77); if (!h) return false; endHold(h); if (vx) throwObj(h.obj, G.W / 2, G.H / 2, vx, vy, Math.hypot(vx, vy)); else dropObj(h.obj); return true; },
   closeup: (on, dist = 3.2, h = 1.4, yawOff = 0) => { G.closeup = on ? { dist, h, yawOff } : null; },

@@ -22,6 +22,7 @@ export const DEFS = {
   cagedoor: { proc: 'cagedoor', mass: 30, hp: 260, shape: 'box', metal: true, label: 'CAGE DOOR' },
   riotshield: { proc: 'riotshield', mass: 16, hp: 170, shape: 'box', metal: true, label: 'RIOT SHIELD' },
   chunk:   { mass: 2.5, hp: 6, shape: 'box', label: 'DEBRIS' },
+  wallslab: { mass: 120, hp: 240, shape: 'box', stone: true, label: 'WALL' },   // torn out of a building by Rewrite
 };
 
 const TEMPLATES = {};
@@ -75,7 +76,7 @@ export function halfHeight(o) { return o.size.y / 2; }
 export function makeProp(type, x, z, rotY = 0, y = null, chunkOf = null) {
   const def = DEFS[type];
   let mesh, size;
-  if (type === 'chunk') {
+  if (type === 'chunk' || chunkOf) {
     size = chunkOf.size.clone();
     const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
     mesh = new THREE.Group(); const m = new THREE.Mesh(geo, chunkOf.mat); m.castShadow = m.receiveShadow = true; mesh.add(m);

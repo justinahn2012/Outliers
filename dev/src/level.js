@@ -542,7 +542,9 @@ function makeGate(scene, world, groundMat, x0, x1, z, alongZ = false) {
   else { body.addShape(new CANNON.Box(new CANNON.Vec3(w / 2, 2.5, 0.3))); body.position.set(cx, 2.5, z); }
   world.addBody(body);
   const g = {
-    x0, x1, z, cx, alongZ, open: false, k: 0, inWorld: true,
+    x0, x1, z, cx, alongZ, open: false, k: 0, inWorld: true, body, flick: 0,
+    // Rewrite on a held cordon: it thins for a beat, then every chip renewing it writes it straight back
+    flicker() { this.flick = 0.55; },
     get pos() { return alongZ ? new THREE.Vector3(z, 0, cx) : new THREE.Vector3(cx, 0, z); },
     openNow() { if (this.open) return; this.open = true; if (this.inWorld) { world.removeBody(body); this.inWorld = false; } },
     snapOpen() { this.openNow(); this.k = 1; mat.uniforms.uOpen.value = 1; m.visible = false; },
@@ -551,6 +553,7 @@ function makeGate(scene, world, groundMat, x0, x1, z, alongZ = false) {
       mat.uniforms.uT.value = G.rt;
       if (this.open && this.k < 1) { this.k = Math.min(1, this.k + dt * 1.6); mat.uniforms.uOpen.value = this.k; if (this.k >= 1) m.visible = false; }
       postMat.emissiveIntensity = this.open ? 0 : 0.6 + Math.sin(G.rt * 5) * 0.2;
+      if (!this.open && this.flick > 0) { this.flick = Math.max(0, this.flick - dt); mat.uniforms.uOpen.value = 0.8 * Math.min(1, this.flick * 3) * (0.55 + 0.45 * Math.sin(G.rt * 55)); }
     },
   };
   return g;

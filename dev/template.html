@@ -41,6 +41,11 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
 #btns button { pointer-events:auto; border-radius:50%; border:none; color:#fff; font-family:'Bebas Neue', Impact; letter-spacing:1.5px; position:relative; touch-action:none; }
 #surgebtn { width:64px; height:64px; background: radial-gradient(circle at 50% 40%, rgba(130,100,255,0.55), rgba(20,14,50,0.75)); border:1.5px solid rgba(190,170,255,0.6) !important; font-size:16px; }
 #surgebtn.cd { opacity:0.45; }
+#editring{position:fixed;left:0;top:0;width:70px;height:70px;margin:-35px 0 0 -35px;border-radius:50%;border:2px solid #b49cff;box-shadow:0 0 16px #7b5cff,inset 0 0 12px #7b5cff;pointer-events:none;opacity:0;z-index:40}
+#editring.on{animation:editr .29s linear forwards}
+@keyframes editr{from{transform:scale(1.7);opacity:.15}to{transform:scale(.5);opacity:1}}
+#btns button.fresh { animation: pulse 0.7s infinite; box-shadow: 0 0 30px rgba(190,160,255,1); }
+.sk.locked .n { letter-spacing:6px; opacity:0.5; }
 #ultbtn { width:84px; height:84px; background: rgba(12,8,30,0.7); font-size:15px; }
 #ultbtn svg { position:absolute; inset:0; width:100%; height:100%; transform: rotate(-90deg); }
 #ultbtn .lbl { position:relative; z-index:1; line-height:1; }
@@ -189,7 +194,7 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
     <span>TOUCH</span><span>Touch any object or soldier to lift it with your mind</span>
     <span>FLICK</span><span>Flick it at the Census, or swing it through them while you hold it</span>
     <span>SHIELD</span><span>Hold anything between you and their guns. Light junk shreds fast; a car or a concrete barrier soaks up a lot.</span>
-    <span>CATCH</span><span>Grab live grenades out of the air and send them back</span>
+    <span>CATCH</span><span>Touch a bullet or a live grenade in mid-air to stop it. Let go and it goes back to whoever sent it; flick to aim it</span>
   </div>
   <button class="go" id="startbtn">OVERCLOCK</button>
   <button class="ghost hidden" id="newbtn">START OVER (WIPES SAVE)</button>

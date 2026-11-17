@@ -85,6 +85,10 @@ Iris's goal: reach Moth's, below Pier 9, before she forgets the way. Everything 
 | **The informant** | Sold Moth's address; running to report it in person. | Catching him keeps Moth hidden; Rook's tip turns him from witness to ally (Rule 4). |
 | **The Auditor's retreat** | At half strength he walks into the sea, returns on the ferry pier. | Rule 2: read-only, he can't stop counting and runs hot; his armor is a freezer and the sea cools him. |
 | **The ferry pier** | Moth's door is in the old ferry terminal; the Auditor stands between her and it. | The last obstacle is the one person who counts her as one. |
+| **Her powers** | Lift and catch from the start. REM hands back Surge at the plaza relays, Rewrite in the tram cut, and Root Access during the lockdown. | Powers are memories she lost; REM gives them back when she needs them (Rule 3, and REM's own agenda). |
+| **Catching bullets** | Touch a round in the air and it stops; let go and it goes home to whoever fired it, or flick it somewhere else. | A bullet is a tiny record that nothing else needs, so stopping it costs almost nothing (Rules 2 and 3). |
+| **Rewrite: walls and street** | Hold on a wall and a piece of it tears out for her to throw; hold on the street and it stands up as cover. | Rule 2: she can write any record. Rule 4: a wall is still needed by every chip that has ever seen it, so within seconds the city agrees it back: the gap closes, the torn piece was never there, and the cover sinks. Rule 3: each edit costs heat. |
+| **Rewriting a checkpoint** | She can write a cordon open, and it flickers. | Every officer on station renews it in the same instant, so it's written straight back ("RENEWED ×6"). Clear them and it lapses for good. |
 | **Memory fragments** | Her evicted memories surfacing in the replay; picking one up takes it back from REM. | Rule 3 + the frame ("Oh. That one was in my pile. Keep it."). |
 | **"Cooling down", XP, the arm** | She is literally overheating; each level is a memory Moth can ink. | Rules 3 and 5. |
 

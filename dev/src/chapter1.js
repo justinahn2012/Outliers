@@ -22,7 +22,7 @@ export const CHAPTER = {
       steps: [
         { kind: 'wave', sub: 'THE CENSUS IS COUNTING', list: ['counter', 'counter', 'counter'], say: [['radio', 'Count sweep, Harrow Street. Heat signature, no Tally. Find it. Count it.']] },
         { kind: 'wave', sub: 'MARKSMEN — HOLD SOMETHING UP TO BLOCK', list: ['counter', 'marksman', 'counter', 'marksman'],
-          say: [['rem', "Those amber walls are cordon orders. Every chip in the city honors them, so they're solid."], ['rem', 'Rifles. Put something between you and them. Something with paperwork.']] },
+          say: [['rem', "Those amber walls are cordon orders. Every chip in the city honors them, so they're solid."], ['rem', 'Rifles. Put something between you and them. Something with paperwork.'], ['rem', 'Or touch a bullet in the air. It is a tiny record. Let go and it goes home.']] },
         { kind: 'wave', sub: 'THEY BROUGHT FRIENDS', list: ['counter', 'counter', 'marksman', 'counter', 'counter'],
           say: [['rem', 'I could delete that wall. It would cost you a memory you would miss, and the city would agree it right back.'], ['rem', 'But a cordon needs officers on station. No officers, no order. Clear the street.']] },
       ],
@@ -36,7 +36,7 @@ export const CHAPTER = {
       enter: [['weil', 'Good evening, Cantor Sound. We are ninety-nine point nine nine nine seven percent of the way home.'], ['weil', "If you see someone who isn't counted, help them. Report them."],
         ['rem', "Those towers are Tally relays: the Census uplink for this block. Every cordon nearby gets renewed through them."]],
       steps: [
-        { kind: 'relays', sub: 'SMASH THE TALLY RELAYS', list: ['warden', 'counter', 'counter'], trickle: ['counter', 'marksman', 'warden', 'counter'], every: 14,
+        { kind: 'relays', sub: 'SMASH THE TALLY RELAYS', unlock: 'surge', list: ['warden', 'counter', 'counter'], trickle: ['counter', 'marksman', 'warden', 'counter'], every: 14,
           say: [['rem', "If I edit a relay, the city agrees it straight back. It can't agree back a car."], ['rem', "Warden shields carry their own lock order, so I can't get a grip. Surge floods it. Or hit them from behind."]] },
         { kind: 'wave', sub: 'WARDENS', list: ['warden', 'warden', 'marksman', 'counter'], say: [['radio', 'Relays down on the plaza. Wardens, hold the count by hand.']] },
       ],
@@ -49,7 +49,7 @@ export const CHAPTER = {
       spawns: [[9, -45], [12, -43], [20, -47], [26, -43], [41, -43], [47, -46], [47, -40]],
       enter: [['rem', "Clerks. They stamp temporary lock orders into anything near you so you can't lift it. Orders expire. And Clerks are light. Throw them."]],
       steps: [
-        { kind: 'wave', sub: 'CLERKS', list: ['clerk', 'clerk', 'counter', 'counter'] },
+        { kind: 'wave', sub: 'CLERKS', list: ['clerk', 'clerk', 'counter', 'counter'], unlock: 'rewrite' },
         { kind: 'wave', sub: 'AMBUSH', list: ['marksman', 'marksman', 'clerk', 'counter', 'lobber'], say: [['radio', 'Contact in the tram cut. Box it in.']] },
       ],
       clear: [['null', 'Stamped. Filed. Flung.'], ['rem', 'That cordon was renewed from here. Not anymore. The market is open.']],
@@ -95,7 +95,7 @@ export const CHAPTER = {
       spawns: [[76, -90], [76, -67.5], [60, -90.5], [48, -67.5], [36, -90.5], [60, -78], [31, -72]],
       enter: [['radio', 'Lockdown in effect, Zone 4. Lamplighter ninety seconds out.']],
       steps: [
-        { kind: 'lockdown', sub: 'LAMPLIGHTER INBOUND', time: 90, list: ['counter', 'counter', 'marksman'], trickle: ['counter', 'marksman', 'lobber', 'counter', 'warden', 'clerk', 'counter', 'marksman'], every: 7, cap: 6,
+        { kind: 'lockdown', sub: 'LAMPLIGHTER INBOUND', time: 90, unlockAt: ['root', 55], list: ['counter', 'counter', 'marksman'], trickle: ['counter', 'marksman', 'lobber', 'counter', 'warden', 'clerk', 'counter', 'marksman'], every: 7, cap: 6,
           say: [['rem', "They're holding you here until it arrives. Ninety seconds. Use the boxcars."]] },
         { kind: 'lamplighter', sub: 'THE LAMPLIGHTER', list: ['lamplighter', 'counter', 'marksman'], adds: ['clerk', 'clerk', 'counter'],
           say: [['radio', 'Lamplighter on station. Count the yard.'], ['rem', 'Its light counts by sight, chip or no chip. If it holds on you, it writes you down. Stay out of the beam and throw high.']] },
@@ -147,6 +147,11 @@ export const CHAPTER = {
   chaseCaught: [['rook', "Got him. Moth's address never made it in. I owe you one, whoever you are."]],
   chaseLost: [['radio', 'Informant reporting. Address confirmed: below Pier 9. All units converge.'], ['rem', 'He got through. They know about Moth now. Move.']],
   rescueOne: [['moth', "That's one. Go, go, go."]],
+  // her big powers are memories she lost; REM, who is made of lost memories, hands them back
+  unlockSurge: [['rem', 'You used to do something bigger. Shields, locks, all of it, gone in one breath. Say it.'], ['null', 'Show me the grid.']],
+  unlockRewrite: [['rem', "They're stamping everything loose. Fine. Nobody stamps a wall."], ['rem', 'Hold on a wall and take a piece of it. Hold on the street and it stands up for you. The city agrees it all back in a few seconds, so be quick.'], ['null', 'Borrowing.']],
+  rewriteGate: [['null', 'Open.'], ['rem', 'Every chip on this street renews that order every second. You write it open, they write it back.'], ['rem', 'Take them off the street and it lapses on its own.']],
+  unlockRoot: [['rem', "There's a gap between their ticks, Iris. Nine times a second. You used to live in it."], ['null', 'Everybody hold still.']],
   firstFragment: [['rem', 'Oh. That one was in my pile. Keep it.']],
   ending: [
     ['moth', "You're late. Sit. Arm."],
