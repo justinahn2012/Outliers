@@ -14,6 +14,8 @@
 
 Every scene should push on that question. If a scene doesn't, cut it.
 
+**The answer the game gives is the twist: Iris decides, and she decides everyone goes.** The Census erased 60,000 people so four million could agree. Iris erases four million so the 60,000 can come back. She becomes the Census run backwards, and the count finally reaches 100%, because there is one person left to agree.
+
 ## Five rules
 
 | # | Rule | What it means | What it lets us do |
@@ -40,7 +42,7 @@ Every scene should push on that question. If a scene doesn't, cut it.
 
 | Character | Rule | Who | Wants | Secret |
 |---|---|---|---|---|
-| **Iris Calloway / Null** | 2 | Insurance adjuster whose Tidelines claims kept coming back *property does not exist*; volunteered for Halden to find out where 60,000 people went. | The Tidelines back. | Erased herself on purpose to make Final Count impossible, then burned the memory of why. Flaw: she decides for everyone, like the Census. |
+| **Iris Calloway / Null** | 2 | Insurance adjuster whose Tidelines claims kept coming back *property does not exist*; volunteered for Halden to find out where 60,000 people went. | The Tidelines back. | She already did it: she deleted every record in the Ledger, and everyone who existed by agreement is gone. Then she burned the memory of choosing to. Flaw: she decides for everyone, like the Census, and in the end for everyone at once. |
 | **Registrar Constance Weil** | 1 | Runs the Census. Her son vanished at nine. | 100%, before the agreement frays. | Died six years ago; exists because the city agrees she does. Final Count makes her permanent; a broken consensus erases her. |
 | **REM** | 3 | The voice in Iris's chip. | To be the Iris who remembers everything. | Built from every evicted memory; each Surge feeds it. Runs the replays. |
 | **Dash Okoro / the Auditor** | 2 | Subject One, read-only, can't stop counting; armored as the Census enforcer. | For the counting to stop. | Counts Iris as one, never zero, and keeps letting her go. |
@@ -62,9 +64,43 @@ REM is searching the replays for the one memory Iris burned: the reason she eras
 |---|---|---|---|---|
 | **1 · Uncounted** | City | Harrow St & Pier 9 · The Depository · The Tallyfield | She's protecting the uncounted. | The Tidelines flood never happened: the Census deleted 60,000 people to make the math work. |
 | **2 · Redacted** | + Memory | The Diagonal · The Tidelines · Halden Institute | Her arm and memories disagree; she digs into Halden. | She erased herself on purpose, and every Surge wears the city down for innocent people. Maybe she's the villain. |
-| **3 · Final Count** | + Replay | The Recount · The Cold Room · The Abacus | She's racing Weil to 100%. | None of it was now: every chapter was a replay in Moth's chair, edited by REM. The rain stops. The present begins. |
+| **3 · Final Count** | + Replay | The Recount · The Cold Room · The Abacus | She's racing Weil to 100%. | None of it was now: every chapter was a replay in Moth's chair. The rain stops, the present begins, and the city is empty. She reached 100% first, the only way it could be reached. |
 
-**Endings:** COMMIT (be counted; Weil permanent; the Tidelines stay deleted) · DIVIDE BY ZERO (spend every memory to bring the Tidelines back; "Count me out.") · secret LET REM (give her body to the Iris who remembers everything).
+**Endings** (all three are chosen in the empty present, from Moth's chair):
+- **COMMIT:** keep the edit. Write the 60,000 Tidelines back into a city that has room for them, and be the only one who remembers the four million. "The count is one."
+- **DIVIDE BY ZERO:** spend every memory, REM included, to write the four million back. They return with no memory of being gone; she doesn't return. "Count me out."
+- **Secret, LET REM:** give her body to the Iris who remembers everything, including choosing it. REM would do it again.
+
+## The final twist: the count is one
+
+**Iris is the one who wipes out the population.** Not the Census, not REM. She decides.
+
+**Why the rules make her do it.**
+- Rule 4 means she can never win an argument with four million chips. Whatever she writes, they agree back. Chapter 1 teaches this in play: walls heal, cordons come back "RENEWED ×6", and the city writes every edit back.
+- Weil's Final Count would lock the Ledger at 100%, with the Tidelines deleted forever.
+- An edit sticks only once nothing needs the old version. The only edit with no pushback is one with no witnesses left. So she makes the city quiet: she deletes every record in the Ledger, and everyone who exists by agreement stops existing.
+- Then, with no one left to disagree, the Tidelines can be written back. But every big edit costs memories, and she has spent nearly all of hers. That is why she's in Moth's chair.
+
+**Who's left, and why.**
+- **Moth:** he never had a chip, so he was never a record (Rule 5).
+- **REM:** it lives in her chip.
+- **Dash:** he always counted her as one. Now the count is one.
+
+**The frame, re-read.** The game is played in the present, in an empty Cantor Sound. The rain that never ripples the water is the replay; when it stops, you see the streets with no one in them. Every Census trooper, every caged civilian and the informant were records: replays of people who no longer exist. Moth isn't helping her escape. He's inking what's left of her so she remembers what she did, and he's making her walk back through it until she finds the moment she chose.
+
+**The burned memory.** REM has been searching for one memory: the moment she decided. It's the memory she burned. "Don't worry, Iris. I've got it." (the end of every chapter) is what REM said when she asked it to run the final edit. The player's hands were on it the whole time: every lift and every rewrite was practice for the last one.
+
+**Seeds already in Chapter 1.**
+- The Auditor going down: "...One."
+- A fragment of Dash: "'One,' he says. 'I count you as one.'"
+- A fragment: "If you're hearing this, I chose this."
+- A fragment of Dash counting raindrops and stopping at zero.
+- A fragment of the last ferry to Halden: "You came back alone."
+- The first time she rewrites a checkpoint, REM: "Then we'll need a quieter city."
+- "COUNT: 1" sprayed on a shuttered shop: the present leaking into the replay.
+- Moth: "You're late. Sit. Arm."
+
+**Writing rule for the twist.** Never state it before Act 3. Every seed must read as something else on a first pass: a number, a joke, a sad memory.
 
 
 ## Chapter 1: why everything is there

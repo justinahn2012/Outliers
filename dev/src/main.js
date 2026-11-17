@@ -168,7 +168,7 @@ async function boot() {
     btn.textContent = 'LOAD FAILED — RELOAD'; console.error(err); return;
   }
   buildEnvironment(renderer, scene);
-  level = buildLevel(scene, world, wet);
+  level = buildLevel(scene, world, wet); G.level = level; level.facade.sfx = sfx;
   // Upright characters are velocity-driven with locked rotation; cannon's friction would pin them in place,
   // so they get a frictionless material. Ragdolls drop the material and use normal friction.
   world.addContactMaterial(new CANNON.ContactMaterial(G.charMat, G.groundMat, { friction: 0, restitution: 0 }));
@@ -451,6 +451,24 @@ function grabbables() {
 
 function liftCost(o) { return (o.kind === 'enemy' ? 12 : o.kind === 'grenade' ? 2 : 3 + o.mass * 0.025) * stat.liftCost(); }
 function holdDrain(o) { return (o.kind === 'enemy' ? 9 : o.kind === 'grenade' ? 1 : 2.5 + o.mass * 0.032) * stat.liftCost(); }
+
+// ======================= glass: anything heavy moving fast through a pane breaks it =======================
+const _gA = new THREE.Vector3(), _gP = new THREE.Vector3(), _gV = new THREE.Vector3();
+function updateGlass(dt) {
+  const F = level.facade; if (!F) return;
+  // swept from last frame's position, using last frame's speed too (a wall may already have stopped it)
+  const sweep = (o, body, rad) => {
+    const v = body.velocity, p = body.position, sp2 = v.x * v.x + v.y * v.y + v.z * v.z, last = o._gs || 0;
+    if (sp2 > 12 || last > 3.5) {
+      _gP.set(p.x, p.y, p.z); _gV.set(v.x, v.y, v.z);
+      if (!o._gp) o._gp = new THREE.Vector3(p.x, p.y, p.z);
+      if (F.hitSphere(_gP, rad, _gV, o._gp, last) && o.mass > 30) { body.velocity.x *= 0.8; body.velocity.z *= 0.8; }
+    }
+    if (!o._gp) o._gp = new THREE.Vector3(); o._gp.set(p.x, p.y, p.z); o._gs = Math.sqrt(sp2);
+  };
+  for (const o of G.props) if (o.alive) sweep(o, o.body, Math.max(0.25, o.hRad || 0.4));
+  for (const e of G.enemies) if (e.alive && !e.def.drone) sweep(e, e.body, 0.45);
+}
 
 // ======================= rewrite: walls and street =======================
 // She writes into the record directly (Rule 2). Every edit costs heat (Rule 3), and the city agrees it back once
@@ -908,6 +926,7 @@ function updateThrown(dt) {
 // ======================= explosions / breakables =======================
 function explosion(p, r, eDmg, hDmg, byHero) {
   FX.explosion(p, r); sfx.explosion(); addTrauma(0.6); hitStop(0.05); screenFlash(0.08);
+  if (level.facade) level.facade.blast(p, r * 1.8, 1.3);
   for (const e of [...G.enemies]) {
     if (!e.alive || e.dead) continue;
     const ep = e.body.position; const d = Math.hypot(ep.x - p.x, ep.y - p.y, ep.z - p.z);
@@ -1096,6 +1115,7 @@ function updateBolts(dt) {
       continue;
     }
     B.p.addScaledVector(B.v, dt); B.life -= dt; B.m.position.copy(B.p);
+    if (level.facade) { _gA.set(px, py, pz); const gh = level.facade.hitSegment(_gA, B.p, !!B.hero); if (gh && !B.hero) { FX.sparks(gh, 6, 3, [0.8, 0.9, 1]); } }
     if (B.hero) {
       if (Math.random() < 0.8) FX.add.emit(B.p.x, B.p.y, B.p.z, 0, 0, 0, 0.9, 0.5, 2.4, 0.2, 0.22, 0.02);
       let hit = B.life <= 0;
@@ -1510,6 +1530,7 @@ function doSurge() {
   if (G.surgeCD > 0) return;
   if (hero.focus < 20) { num(_v2.set(hp.x, hp.y + 1.6, hp.z), 'NO FOCUS', 'psi', 0.8); return; }
   hero.focus -= 20; hero.focusDelay = 0.6; G.surgeCD = stat.surgeCD();
+  if (level.facade) level.facade.blast(hp, 6.5, 1);
   // a beat of anticipation: light and data drain inward to her chest
   G.surge = { t: 0, fired: false };
   G.slowT = 0.14; G.slowScale = 0.45;
@@ -2605,6 +2626,7 @@ function stepGame(dt, rdt) {
     safe(updateGrenades, dt);
     safe(updateBolts, dt);
     safe(updateEdits, dt);
+    safe(updateGlass, dt);
     safe(updateWaves, dt);
     safe(updateGuide, dt);
     safe(updateNav, rdt);

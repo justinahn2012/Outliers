@@ -117,6 +117,19 @@ export const sfx = {
     for (let i = 0; i < 4; i++) tone(t + i * 0.018, 0.25, 'triangle', 2400 + Math.random() * 2600, 1800, 0.035, 0.002);
     noise(t, 0.2, 'highpass', 6000, 3000, 0.8, 0.12, 0.002);
   },
+  // a pane going: the burst, then the pieces landing for the next second
+  glass(big = 1) {
+    if (!ctx) return; const t = ctx.currentTime;
+    noise(t, 0.35 * big + 0.1, 'highpass', 5200, 2600, 0.7, 0.22 * big + 0.08, 0.001);
+    noise(t, 0.12, 'bandpass', 2400, 900, 1.2, 0.12 * big, 0.001);
+    for (let i = 0; i < 7 + big * 8; i++) tone(t + Math.random() * 0.06, 0.18 + Math.random() * 0.3, 'triangle', 2800 + Math.random() * 4600, 2200 + Math.random() * 1500, 0.03 * big + 0.012, 0.001);
+    for (let i = 0; i < 5 + big * 7; i++) { const d = 0.18 + Math.random() * 0.9; tone(t + d, 0.06 + Math.random() * 0.08, 'triangle', 3500 + Math.random() * 4000, 3000, 0.012 + Math.random() * 0.018, 0.001); }
+  },
+  crack() {
+    if (!ctx) return; const t = ctx.currentTime;
+    noise(t, 0.08, 'highpass', 4200, 2600, 1.5, 0.12, 0.001);
+    tone(t, 0.09, 'triangle', 5200 + Math.random() * 1500, 3800, 0.03, 0.001);
+  },
   surgeCharge() {
     if (!ctx) return; const t = ctx.currentTime;
     [660, 880, 1320].forEach((f, i) => tone(t + i * 0.035, 0.05, 'square', f, f, 0.05, 0.002));

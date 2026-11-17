@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { G, GRP, ALL, rand } from './state.js';
 import { A } from './assets.js';
+import { makeFacadeKit } from './facade.js';
 
 function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
 let seed = 1337;
@@ -241,11 +242,7 @@ export function buildLevel(scene, world, wet) {
     return pbr('plaster_wall', w / 3.2, h / 3.2, { color: new THREE.Color(c[0], c[1], c[2]) });
   };
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x17181b, roughness: 0.95 });
-  const glassDark = new THREE.MeshStandardMaterial({ color: 0x05070b, metalness: 0.9, roughness: 0.08, envMapIntensity: 1.6 });
-  const glassLit = new THREE.MeshStandardMaterial({ color: 0x050505, emissive: 0xffffff, emissiveMap: windowTexture(), emissiveIntensity: 0.85, roughness: 0.15, metalness: 0.5 });
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0x1c1d20, roughness: 0.6, metalness: 0.4 });
-  const winGeo = new THREE.PlaneGeometry(1.15, 1.6), frameGeo = new THREE.BoxGeometry(1.35, 1.8, 0.08);
-  const winsDark = [], winsLit = [];
+  const kit = makeFacadeKit(scene, { rnd, signTexture });
 
   // ---- roofs: tar surface (tiled by world size), a parapet, and real rooftop kit instead of one stretched slab ----
   const roofTex = (() => {
@@ -310,14 +307,12 @@ export function buildLevel(scene, world, wet) {
     for (let f = 0; f < floors; f++) for (let c = 0; c < cols; c++) {
       const u = (c + 0.5) / cols * faceW - faceW / 2, y = 5.2 + f * 3.4;
       const p = axis === 'x' ? new THREE.Vector3(fx, y, (z0 + z1) / 2 + u) : new THREE.Vector3((x0 + x1) / 2 + u, y, fz);
-      const lit = rnd() < 0.34;
-      (lit ? winsLit : winsDark).push({ p, ry, col: lit ? new THREE.Color().setHSL(0.08 + rnd() * 0.06, 0.6, 0.35 + rnd() * 0.3).multiplyScalar(rnd() < 0.15 ? 0.6 : 1.4) : null });
+      kit.window(p, ry, rnd() < 0.38);
     }
-    // ground-floor storefront glow
-    const sf = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(faceW - 2, 7), 2.6), new THREE.MeshStandardMaterial({ color: 0x050505, emissive: new THREE.Color().setHSL(0.06 + rnd() * 0.08, 0.35, 0.6), emissiveMap: storeTexture(), emissiveIntensity: 0.7, roughness: 0.1, metalness: 0.5 }));
-    sf.position.set(axis === 'x' ? fx : (x0 + x1) / 2, 1.7, axis === 'x' ? (z0 + z1) / 2 + (rnd() - 0.5) * 2 : fz); sf.rotation.y = ry; scene.add(sf);
-    const awn = new THREE.Mesh(new THREE.BoxGeometry(Math.min(faceW - 2, 7) + 0.4, 0.08, 1.0), new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(rnd(), 0.4, 0.18), roughness: 0.8 }));
-    awn.position.copy(sf.position); awn.position.y = 3.25; awn.rotation.y = ry; awn.translateZ(0.5); awn.rotation.x = 0; scene.add(awn);
+    kit.dress(axis === 'x' ? fx : (x0 + x1) / 2, axis === 'x' ? (z0 + z1) / 2 : fz, ry, faceW, h, floors, cols);
+    // ground floor: a real shopfront with a room behind the glass
+    const sw = Math.min(faceW - 2, 7);
+    kit.storefront(axis === 'x' ? fx : (x0 + x1) / 2, axis === 'x' ? (z0 + z1) / 2 + (rnd() - 0.5) * 2 : fz, ry, sw);
     roofTop(x0, x1, z0, z1, h);
   };
   const block = (x0, x1, z0, z1, h, faces, opts = {}) => {
@@ -336,17 +331,14 @@ export function buildLevel(scene, world, wet) {
       for (let fl = 0; fl < floors; fl++) for (let c = 0; c < cols; c++) {
         const u = (c + 0.5) / cols * fw - fw / 2, y = 5.2 + fl * 3.4;
         const p = alongZ ? new THREE.Vector3(fx, y, (z0 + z1) / 2 + u) : new THREE.Vector3((x0 + x1) / 2 + u, y, fz);
-        const lit = rnd() < (opts.lit ?? 0.34);
-        (lit ? winsLit : winsDark).push({ p, ry, col: lit ? new THREE.Color().setHSL(0.08 + rnd() * 0.06, 0.6, 0.35 + rnd() * 0.3).multiplyScalar(rnd() < 0.15 ? 0.6 : 1.4) : null });
+        kit.window(p, ry, rnd() < (opts.lit ?? 0.38));
       }
+      if (!opts.bare) kit.dress(alongZ ? fx : (x0 + x1) / 2, alongZ ? (z0 + z1) / 2 : fz, ry, fw, h, floors, cols);
       if (opts.noStore && opts.noStore.includes(f)) continue;
       const sw = Math.min(fw - 2, opts.storeW || 7);
       if (sw < 2) continue;
       const off = (opts.storeOff && opts.storeOff[f]) || (rnd() - 0.5) * 2;
-      const sf = new THREE.Mesh(new THREE.PlaneGeometry(sw, 2.6), new THREE.MeshStandardMaterial({ color: 0x050505, emissive: new THREE.Color().setHSL(0.06 + rnd() * 0.08, 0.35, 0.6), emissiveMap: storeTexture(), emissiveIntensity: 0.7, roughness: 0.1, metalness: 0.5 }));
-      sf.position.set(alongZ ? fx : (x0 + x1) / 2 + off, 1.7, alongZ ? (z0 + z1) / 2 + off : fz); sf.rotation.y = ry; scene.add(sf);
-      const awn = new THREE.Mesh(new THREE.BoxGeometry(sw + 0.4, 0.08, 1.0), new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(rnd(), 0.4, 0.18), roughness: 0.8 }));
-      awn.position.copy(sf.position); awn.position.y = 3.25; awn.rotation.y = ry; awn.translateZ(0.5); scene.add(awn);
+      kit.storefront(alongZ ? fx : (x0 + x1) / 2 + off, alongZ ? (z0 + z1) / 2 + off : fz, ry, sw, { kind: opts.shop && opts.shop[f], closed: opts.closed && opts.closed.includes(f) });
     }
     roofTop(x0, x1, z0, z1, h);
   };
@@ -413,12 +405,9 @@ export function buildLevel(scene, world, wet) {
     list.forEach((w, i) => { Q.setFromEuler(new THREE.Euler(0, w.ry, 0)); M.compose(w.p, Q, new THREE.Vector3(1, 1, 1)); im.setMatrixAt(i, M); if (color && w.col) im.setColorAt(i, w.col); });
     scene.add(im); return im;
   };
-  const all = [...winsDark, ...winsLit];
-  inst(frameGeo, frameMat, all.map(w => ({ ...w, p: w.p.clone() })));
-  inst(winGeo, glassDark, winsDark.map(w => ({ ...w, p: w.p.clone().add(new THREE.Vector3(Math.sin(w.ry) * 0.05, 0, Math.cos(w.ry) * 0.05)) })));
-  // lit windows: warm interiors (instance colour drives emissive via a tiny shader tweak)
-  glassLit.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n#ifdef USE_INSTANCING_COLOR\n totalEmissiveRadiance *= vColor;\n#endif'); };
-  inst(winGeo, glassLit, winsLit.map(w => ({ ...w, p: w.p.clone().add(new THREE.Vector3(Math.sin(w.ry) * 0.05, 0, Math.cos(w.ry) * 0.05)) })), true);
+  // every window in the city: interior-mapped rooms behind breakable glass
+  kit.finish();
+  L.facade = kit;
 
 
   // Pier edge + harbour
@@ -464,6 +453,7 @@ export function buildLevel(scene, world, wet) {
   const rain = new THREE.Mesh(rg, rainMat); rain.frustumCulled = false; rain.renderOrder = 15; scene.add(rain); wet.hide.push(rain);
   const _sd = [];
   L.update = (dt, center) => {
+    kit.update(dt);
     moon.position.set(center.x - 8, 22, center.z + 10); moon.target.position.set(center.x, 0, center.z);
     // light pool: the 8 spots nearest the view get the real lights
     _sd.length = 0;

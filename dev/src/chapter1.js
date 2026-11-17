@@ -150,7 +150,7 @@ export const CHAPTER = {
   // her big powers are memories she lost; REM, who is made of lost memories, hands them back
   unlockSurge: [['rem', 'You used to do something bigger. Shields, locks, all of it, gone in one breath. Say it.'], ['null', 'Show me the grid.']],
   unlockRewrite: [['rem', "They're stamping everything loose. Fine. Nobody stamps a wall."], ['rem', 'Hold on a wall and take a piece of it. Hold on the street and it stands up for you. The city agrees it all back in a few seconds, so be quick.'], ['null', 'Borrowing.']],
-  rewriteGate: [['null', 'Open.'], ['rem', 'Every chip on this street renews that order every second. You write it open, they write it back.'], ['rem', 'Take them off the street and it lapses on its own.']],
+  rewriteGate: [['null', 'Open.'], ['rem', 'Every chip on this street renews that order every second. You write it open, they write it back.'], ['rem', 'Take them off the street and it lapses on its own.'], ['null', "And when it's the whole city writing it back?"], ['rem', "Then we'll need a quieter city."]],
   unlockRoot: [['rem', "There's a gap between their ticks, Iris. Nine times a second. You used to live in it."], ['null', 'Everybody hold still.']],
   firstFragment: [['rem', 'Oh. That one was in my pile. Keep it.']],
   ending: [
