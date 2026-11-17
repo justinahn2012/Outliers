@@ -34,7 +34,7 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
 #wavelabel { font-size:20px; letter-spacing:2px; line-height:1; }
 #enemyleft { font-family:Inter, sans-serif; font-size:10px; font-weight:800; letter-spacing:1.5px; color:var(--dim); margin-top:3px; }
 #pausebtn { pointer-events:auto; width:38px; height:38px; border-radius:50%; border:1px solid rgba(255,255,255,0.25); background:rgba(10,10,20,0.5); color:#fff; font-weight:900; font-size:13px; letter-spacing:1px; }
-#combo { position:absolute; right: calc(var(--sar) + 16px); top: calc(var(--sat) + 172px); text-align:right; opacity:0; transition: opacity .2s; }
+#combo { position:absolute; right: calc(var(--sar) + 16px); top: calc(var(--sat) + 190px); text-align:right; opacity:0; transition: opacity .2s; }
 #combo b { display:block; font-family:'Bebas Neue', Impact; font-size:46px; line-height:0.9; color:#fff; text-shadow: 0 0 18px rgba(155,123,255,1); }
 #combo span { font-family:'Bebas Neue', Impact; font-size:18px; letter-spacing:3px; color:var(--psi2); }
 #btns { position:absolute; right: calc(var(--sar) + 16px); bottom: calc(var(--sab) + 18px); display:flex; flex-direction:column; align-items:center; gap:14px; }
@@ -101,9 +101,28 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
 }
 
 /* dialogue */
-#dlg { position:absolute; left:50%; top: calc(var(--sat) + 100px); transform: translate(-50%, -6px); width: min(90vw, 460px); padding: 9px 12px 10px; border-radius:10px;
+#dlg { position:absolute; left: calc(var(--sal) + 12px); right: calc(var(--sar) + 120px); top: calc(var(--sat) + 100px); transform: translateY(-6px); max-width: 460px; padding: 9px 12px 10px; border-radius:10px;
   background: rgba(8,8,18,0.72); border:1px solid rgba(255,255,255,0.1); border-left:3px solid var(--psi); opacity:0; transition: opacity .25s, transform .25s; text-align:left; }
-#dlg.show { opacity:1; transform: translate(-50%, 0); }
+#dlg.show { opacity:1; transform: translateY(0); }
+/* where am I: minimap, place name, route arrow, full map */
+#minimap { position:absolute; right: calc(var(--sar) + 12px); top: calc(var(--sat) + 70px); width:98px; height:98px; border-radius:14px; border:1px solid rgba(180,160,255,0.35);
+  background: rgba(6,6,16,0.62); box-shadow: 0 0 14px rgba(0,0,0,0.5); pointer-events:auto; display:none; }
+#mmcap { position:absolute; right: calc(var(--sar) + 12px); top: calc(var(--sat) + 171px); width:98px; text-align:center; font: 800 8.5px Inter, sans-serif; letter-spacing:1.6px; color:#b9b2e6; display:none; }
+#place { position:absolute; left:0; right:0; top: 27%; text-align:center; font-family:'Bebas Neue', Impact; font-size:26px; letter-spacing:6px; color:#efeaff;
+  text-shadow: 0 0 16px rgba(155,123,255,0.9); opacity:0; transition: opacity .5s; }
+#place small { display:block; font: 800 9px Inter, sans-serif; letter-spacing:3px; color:#a99fe0; margin-bottom:2px; }
+#place.show { opacity:1; }
+#objarrow { position:absolute; left:0; top:0; width:0; height:0; display:none; }
+#objarrow i { position:absolute; left:-15px; top:-15px; width:30px; height:30px; display:flex; align-items:center; justify-content:center; }
+#objarrow i::before { content:''; width:0; height:0; border-left:9px solid transparent; border-right:9px solid transparent; border-bottom:17px solid #c7b4ff; filter: drop-shadow(0 0 6px rgba(155,123,255,1)); }
+#objarrow span { position:absolute; white-space:nowrap; font: 800 10.5px Inter, sans-serif; letter-spacing:1.4px; color:#fff; background: rgba(10,8,24,0.72); border:1px solid rgba(155,123,255,0.5);
+  padding: 3px 7px; border-radius:7px; transform: translate(-50%, -50%); }
+#bigmap { position:fixed; inset:0; background: rgba(4,4,12,0.97); display:flex; flex-direction:column; align-items:center; z-index:60; padding: calc(var(--sat) + 14px) 10px calc(var(--sab) + 14px); }
+#bigmap.hidden { display:none; }
+#bigmap h2 { font-family:'Bebas Neue', Impact; font-size:30px; letter-spacing:5px; margin:0; color:#fff; text-shadow: 0 0 20px rgba(155,123,255,0.9); }
+#bigmap .sub { font: 800 10px Inter, sans-serif; letter-spacing:2px; color:#a99fe0; margin:2px 0 6px; }
+#bigmap canvas { flex:1; width:100%; min-height:0; }
+#bigmap .close { margin-top:8px; font: 800 11px Inter, sans-serif; letter-spacing:2px; color:#cfc8ff; background:none; border:1px solid rgba(155,123,255,0.5); border-radius:20px; padding:9px 22px; }
 #dlg b { display:block; font-family:'Bebas Neue', Impact; font-size:13px; letter-spacing:2.5px; color:var(--psi2); margin-bottom:2px; }
 #dlg span { font-size:13.5px; line-height:1.35; font-weight:600; color:#f1efff; }
 #dlg.rem { border-left-color:#ff5fd2; } #dlg.rem b { color:#ff9be6; } #dlg.rem span { font-family: ui-monospace, Menlo, monospace; font-size:12.5px; color:#ffd9f6; text-shadow: 1px 0 rgba(255,40,160,0.5), -1px 0 rgba(40,220,255,0.5); }
@@ -180,8 +199,13 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; touc
   <div id="hint"></div>
   <div id="banner"></div>
   <div id="dlg"><b id="dlgwho"></b><span id="dlgline"></span></div>
+  <canvas id="minimap"></canvas><div id="mmcap">TAP FOR MAP</div>
+  <div id="place"></div>
+  <div id="objarrow"><i></i><span></span></div>
   <div id="fps"></div>
 </div>
+
+<div id="bigmap" class="hidden"><h2>CANTOR SOUND</h2><div class="sub" id="bigmapsub"></div><canvas id="bigmapc"></canvas><button class="close" id="bigmapclose">BACK TO IT</button></div>
 
 <div id="title" class="screen">
   <div class="series">OUTLIERS</div>

@@ -453,14 +453,14 @@ export function buildLevel(scene, world, wet) {
 // =====================================================================================
 export const ZONES = [
   { id: 'harrow', name: 'HARROW STREET', rects: [[-12.4, 12.4, -26.9, 24.4]], start: [0, 12] },
-  { id: 'plaza', name: 'CHECKPOINT PLAZA', rects: [[12.4, 30, -12.5, -6.5, { pitch: 76 }], [30, 62, -30, 4]], start: [15.5, -9.5] },
-  { id: 'tram', name: 'TRAM CUT', rects: [[44, 50, -48, -30], [7.1, 50, -48, -42, { pitch: 76 }]], start: [47, -32.5] },
+  { id: 'plaza', name: 'CHECKPOINT PLAZA', rects: [[12.4, 30, -12.5, -6.5, { pitch: 76, name: 'SIDE STREET' }], [30, 62, -30, 4]], start: [15.5, -9.5] },
+  { id: 'tram', name: 'TRAM CUT', rects: [[44, 50, -48, -30, { name: 'TRAM LINE' }], [7.1, 50, -48, -42, { pitch: 76 }]], start: [47, -32.5] },
   { id: 'market', name: 'PIER 9 MARKET', rects: [[-7.1, 7.1, -64, -26.9]], start: [4.5, -45] },
   { id: 'cold', name: 'COLD STORAGE', rects: [[-29.6, -7.9, -64, -46.4, { pitch: 66 }]], start: [-10, -55] },
   { id: 'alley', name: 'GUT LANE', rects: [[-4.15, 4.15, -92, -64]], start: [0, -67.5] },
-  { id: 'rail', name: 'THE RAIL YARD', rects: [[4.15, 30, -82, -76, { pitch: 76 }], [30, 78, -92, -66, { pitch: 58 }]], start: [7.5, -79] },
-  { id: 'yard', name: 'CONTAINER YARD', rects: [[40, 80, -136, -92, { openN: true }], [14.2, 40, -122, -110, { pitch: 72 }]], start: [65, -95] },
-  { id: 'docks', name: 'PIER 9', rects: [[-20.3, 14.2, -130.3, -92, { openW: true, openN: true }]], start: [11, -116] },
+  { id: 'rail', name: 'THE RAIL YARD', rects: [[4.15, 30, -82, -76, { pitch: 76, name: 'YARD ROAD' }], [30, 78, -92, -66, { pitch: 58 }]], start: [7.5, -79] },
+  { id: 'yard', name: 'CONTAINER YARD', rects: [[40, 80, -136, -92, { openN: true }], [14.2, 40, -122, -110, { pitch: 72, name: 'TRANSIT SHED' }]], start: [65, -95] },
+  { id: 'docks', name: 'PIER 9 DOCKS', rects: [[-20.3, 14.2, -130.3, -92, { openW: true, openN: true }]], start: [11, -116] },
   { id: 'ferry', name: 'FERRY PIER', rects: [[-62, -20.3, -120, -104, { openN: true, openS: true, openW: true }]], start: [-23.5, -112] },
 ];
 // gate i opens when zone i is cleared; the last two never open (Census locks on the old shortcuts)
