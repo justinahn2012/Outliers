@@ -110,7 +110,7 @@ export function addRim(mat, color, k = 0.6, pw = 2.4) {
     Object.assign(sh.uniforms, u);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform vec3 uRimCol; uniform float uRimK; uniform float uRimP; uniform float uDis; uniform vec3 uDisCol;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ float fr = 1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0); totalEmissiveRadiance += uRimCol * pow(fr, uRimP) * uRimK; }\nif (uDis > 0.0) { vec2 dc = floor(gl_FragCoord.xy / 5.0); float dn = fract(sin(dot(dc, vec2(12.9898, 78.233))) * 43758.5453); if (dn < uDis) discard; if (dn < uDis + 0.14) totalEmissiveRadiance += uDisCol; }');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ float fr = 1.0 - clamp(abs(dot(normalize(vNormal), normalize(vViewPosition))), 0.0, 1.0); totalEmissiveRadiance += uRimCol * smoothstep(uRimP, 1.0, fr) * uRimK; }\nif (uDis > 0.0) { vec2 dc = floor(gl_FragCoord.xy / 5.0); float dn = fract(sin(dot(dc, vec2(12.9898, 78.233))) * 43758.5453); if (dn < uDis) discard; if (dn < uDis + 0.14) totalEmissiveRadiance += uDisCol; }');
   };
   mat.customProgramCacheKey = () => 'rim';
   mat.needsUpdate = true;

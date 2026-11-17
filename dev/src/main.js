@@ -27,7 +27,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPrefer
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.32;
+renderer.toneMappingExposure = 1.12;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x06080e);
 scene.fog = new THREE.FogExp2(0x0a0d16, 0.019);
@@ -82,18 +82,26 @@ const GradeShader = {
         col *= 1.0 - 0.12 * uFreeze * step(0.5, fract(vUv.y * uRes.y * 0.33 - uTime * 2.0));
         l = dot(col, vec3(0.299, 0.587, 0.114));
       }
-      vec3 shadows = vec3(0.86, 0.98, 1.10), highs = vec3(1.06, 1.0, 0.92);
-      col *= mix(shadows, highs, smoothstep(0.05, 0.6, l));
-      col = mix(vec3(l), col, 1.06);
-      col = (col - 0.5) * 1.05 + 0.5;
-      col *= 1.0 - smoothstep(0.18, 0.75, r2) * 0.55;
-      col += (h(vUv * uRes) - 0.5) * 0.035;
+      // grade (art panel): night contrast pivot, teal-ink shadows, warm paper highs; everything gives up saturation
+      // except violet (Null) and amber (the Census); ink blacks; aspect-correct vignette; grain weighted to shadows
+      col = 0.18 * pow(max(col, 0.0) / 0.18, vec3(1.10));
+      vec3 shI = vec3(0.877, 1.052, 1.052), hiP = vec3(1.029, 0.995, 0.951);
+      col *= mix(shI, vec3(1.0), smoothstep(0.02, 0.30, l));
+      col *= mix(vec3(1.0), hiP, smoothstep(0.40, 0.90, l));
+      float vio = clamp((col.b - col.g) * 3.0, 0.0, 1.0) * clamp((col.r - col.g) * 3.0 + 0.2, 0.0, 1.0);
+      float amb = clamp((col.r - col.b) * 2.0, 0.0, 1.0) * clamp((col.g - col.b) * 2.5, 0.0, 1.0) * step(col.g, col.r);
+      l = dot(col, vec3(0.299, 0.587, 0.114));
+      col = mix(vec3(l), col, mix(0.82, 1.12, max(vio, amb)));
+      col = col * 0.975 + vec3(0.010, 0.016, 0.018);
+      vec2 vg = (vUv - 0.5) * vec2(uAspect, 1.0);
+      col *= 1.0 - smoothstep(0.20, 0.62, dot(vg, vg)) * 0.38;
+      col += (h(vUv * uRes) - 0.5) * mix(0.04, 0.015, l);
       gl_FragColor = vec4(max(col, 0.0), 1.0);
     }`,
 };
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.6, 0.86);
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.42, 1.05);   // only emitters, power and danger bloom
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 const grade = new ShaderPass(GradeShader); composer.addPass(grade);
@@ -115,7 +123,7 @@ function resize() {
   renderer.setPixelRatio(DPR); renderer.setSize(w, h, false);
   composer.setPixelRatio(DPR); composer.setSize(w, h);
   bloom.resolution.set(w * DPR / 2, h * DPR / 2);
-  grade.uniforms.uRes.value.set(w * DPR, h * DPR);
+  grade.uniforms.uRes.value.set(w * DPR, h * DPR); grade.uniforms.uAspect.value = w / h;
   wet.resize(w * DPR, h * DPR);
   camera.aspect = w / h; camera.fov = w / h < 1 ? 54 : 44; camera.updateProjectionMatrix();
   FX.setScale && FX.add && FX.setScale(h * DPR / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)));
@@ -352,7 +360,7 @@ function registerHit(e, o, impact, cp) {
 function damageEnemy(e, dmg, dir, force, src) {
   if (e.dead || !e.alive) return;
   if (e.retreating) return;
-  e.hp -= dmg; e.hpShow = 2.5; e.flinch = 0.22; e.hitDir = dir ? (e.hitDir || new THREE.Vector3()).set(dir.x, 0, dir.z).normalize() : e.hitDir;
+  e.hp -= dmg; e.hpShow = 2.5; e.flinch = 0.22; e.pop = 0.08; e.hitDir = dir ? (e.hitDir || new THREE.Vector3()).set(dir.x, 0, dir.z).normalize() : e.hitDir;
   if (e.type === 'auditor' && G.mission && G.mission.kind === 'auditor1' && e.hp < e.maxHp * 0.5) { e.hp = Math.max(e.hp, e.maxHp * 0.45); startRetreat(e); }
   if (e.type === 'lamplighter' && !e.half && e.hp < e.maxHp * 0.5) {
     e.half = true; sayList(CHAPTER.lamplighterHalf);
@@ -2603,7 +2611,7 @@ function frame(now) {
 
   try { stepGame(dt, rdt); } catch (err) { reportError(err); }
   try { renderFrame(dt, rdt); } catch (err) { reportError(err); }
-  try { G.bloomKick = Math.max(0, (G.bloomKick || 0) - rdt * 2.2); bloom.strength = 0.7 + G.bloomKick; Shock.update(rdt, grade.uniforms, camera, G.W, G.H); grade.uniforms.uTime.value = G.rt % 100; G.glitch = Math.max(0, (G.glitch || 0) - rdt * 2.4); grade.uniforms.uGlitch.value = Math.min(1, G.glitch); G.freeze = G.freeze || 0; G.freezeV = (G.freezeV || 0) + (G.freeze - (G.freezeV || 0)) * Math.min(1, rdt * 9); grade.uniforms.uFreeze.value = G.freezeV; wet.render(renderer, scene, camera); composer.render(); } catch (err) { reportError(err); }
+  try { G.bloomKick = Math.max(0, (G.bloomKick || 0) - rdt * 2.2); bloom.strength = 0.55 + Math.min(0.45, G.bloomKick); Shock.update(rdt, grade.uniforms, camera, G.W, G.H); grade.uniforms.uTime.value = G.rt % 100; G.glitch = Math.max(0, (G.glitch || 0) - rdt * 2.4); grade.uniforms.uGlitch.value = Math.min(1, G.glitch); G.freeze = G.freeze || 0; G.freezeV = (G.freezeV || 0) + (G.freeze - (G.freezeV || 0)) * Math.min(1, rdt * 9); grade.uniforms.uFreeze.value = G.freezeV; wet.render(renderer, scene, camera); composer.render(); } catch (err) { reportError(err); }
   const _t2 = performance.now();
   PERF.js = PERF.js * 0.9 + (_t2 - _t0) * 0.1; PERF.rdt = rdt;
 }

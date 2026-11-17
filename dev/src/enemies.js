@@ -81,16 +81,34 @@ const shieldStripe = new THREE.MeshStandardMaterial({ color: 0x221000, emissive:
 
 let ringTex = null;
 // ring colour says what it is from above: brawler red, rifle amber, grenades green, shield steel, runner white, heavy crimson
-const RING = { counter: [1.2, 0.26, 0.22], marksman: [1.3, 0.72, 0.14], lobber: [0.36, 1.2, 0.3], warden: [0.4, 0.7, 1.35], informant: [1.3, 1.25, 1.1], auditor: [1.4, 0.1, 0.08], clerk: [1.3, 0.7, 0.15], lamplighter: [1, 1, 1] };
+const RING = { counter: [1.2, 0.26, 0.22], marksman: [1.3, 0.72, 0.14], lobber: [0.36, 1.2, 0.3], warden: [0.25, 1.15, 1.3], informant: [1.3, 1.25, 1.1], auditor: [1.4, 0.1, 0.08], clerk: [1.3, 0.7, 0.15], lamplighter: [1, 1, 1] };
+const RING_SHAPE = { counter: 'solid', marksman: 'chevron', lobber: 'dash', warden: 'double', informant: 'dots', auditor: 'dial', clerk: 'diamond', lamplighter: 'solid' };
+const ringTexes = {};
+function ringTexture(shape) {
+  if (ringTexes[shape]) return ringTexes[shape];
+  const S = 128, c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d'); x.clearRect(0, 0, S, S);
+  const glowArc = (r, w, a0, a1) => { x.save(); x.strokeStyle = 'rgba(255,255,255,0.95)'; x.lineWidth = w; x.shadowColor = '#fff'; x.shadowBlur = 6; x.beginPath(); x.arc(64, 64, r, a0, a1); x.stroke(); x.restore(); };
+  const g = x.createRadialGradient(64, 64, 30, 64, 64, 62); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.8, 'rgba(255,255,255,0.14)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, S, S);
+  if (shape === 'solid') glowArc(54, 4, 0, 6.29);
+  else if (shape === 'double') { glowArc(56, 3, 0, 6.29); glowArc(47, 3, 0, 6.29); }
+  else if (shape === 'dash') for (let k = 0; k < 12; k++) glowArc(54, 4, k / 12 * 6.283, k / 12 * 6.283 + 0.32);
+  else if (shape === 'dots') for (let k = 0; k < 18; k++) { const a = k / 18 * 6.283; x.fillStyle = '#fff'; x.beginPath(); x.arc(64 + Math.cos(a) * 54, 64 + Math.sin(a) * 54, 3.2, 0, 6.29); x.fill(); }
+  else if (shape === 'dial') { glowArc(54, 3, 0, 6.29); for (let k = 0; k < 24; k++) { const a = k / 24 * 6.283, l = k % 6 ? 6 : 12; x.strokeStyle = '#fff'; x.lineWidth = 2.5; x.beginPath(); x.moveTo(64 + Math.cos(a) * 46, 64 + Math.sin(a) * 46); x.lineTo(64 + Math.cos(a) * (46 - l), 64 + Math.sin(a) * (46 - l)); x.stroke(); } }
+  else if (shape === 'chevron') { glowArc(54, 3.5, 0, 6.29); x.fillStyle = '#fff'; x.beginPath(); x.moveTo(64, 2); x.lineTo(54, 16); x.lineTo(64, 11); x.lineTo(74, 16); x.closePath(); x.fill(); }
+  else if (shape === 'diamond') { x.save(); x.strokeStyle = '#fff'; x.lineWidth = 4; x.shadowColor = '#fff'; x.shadowBlur = 6; x.beginPath(); x.moveTo(64, 8); x.lineTo(120, 64); x.lineTo(64, 120); x.lineTo(8, 64); x.closePath(); x.stroke(); x.restore(); }
+  return (ringTexes[shape] = new THREE.CanvasTexture(c));
+}
+const ringBackTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 18, 32, 32, 32); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.75, 'rgba(0,0,0,0.55)'); g.addColorStop(0.9, 'rgba(0,0,0,0.6)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
 function threatRing(scale, type) {
   if (!ringTex) {
     const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
     const g = x.createRadialGradient(64, 64, 30, 64, 64, 64); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.74, 'rgba(255,255,255,0.2)'); g.addColorStop(0.87, 'rgba(255,255,255,0.8)'); g.addColorStop(1, 'rgba(255,255,255,0)');   // white: the colour comes from the type
     x.fillStyle = g; x.fillRect(0, 0, 128, 128); ringTex = new THREE.CanvasTexture(c);
   }
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4 * scale, 1.4 * scale), new THREE.MeshBasicMaterial({ map: ringTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: new THREE.Color(1.2, 0.26, 0.22) }));
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4 * scale, 1.4 * scale), new THREE.MeshBasicMaterial({ map: ringTexture(RING_SHAPE[type] || 'solid'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: new THREE.Color(1.2, 0.26, 0.22) }));
   if (type && RING[type]) m.material.color.setRGB(...RING[type]);
-  m.rotation.x = -Math.PI / 2; m.renderOrder = 4; return m;
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(1.5 * scale, 1.5 * scale), new THREE.MeshBasicMaterial({ map: ringBackTex, transparent: true, depthWrite: false })); back.renderOrder = 3; back.position.z = -0.004; m.add(back);
+  m.rotation.x = -Math.PI / 2; m.renderOrder = 4; m.userData.spin = RING_SHAPE[type] === 'dash' ? 1.2 : RING_SHAPE[type] === 'dial' ? 0.35 : 0; return m;
 }
 let barTex = null;
 function bar() {
@@ -149,7 +167,7 @@ export function spawnEnemy(type, x, z) {
   // guns that came without textures render as flat placeholder yellow: make them gunmetal
   for (const m of c.mats) if (/pistol|shotgun/.test(m.name)) { m.map = null; m.color.set(0x1c1e22); m.metalness = 0.65; m.roughness = 0.42; m.needsUpdate = true; }
   const civ = def.model === 'civ_m' || def.model === 'civ_f';
-  for (const m of c.mats) addRim(m, type === 'auditor' ? 0xff5a30 : 0xff8a3a, civ || m.alphaTest > 0 ? 0 : type === 'auditor' ? 0.16 : 0.2, 3.2);
+  for (const m of c.mats) addRim(m, type === 'auditor' ? 0xff5a30 : 0xff9a1a, civ || m.alphaTest > 0 ? 0 : 0.3, 0.8);
   if (type === 'lobber') {
     gear.pack = new THREE.Group();
     const plate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, 0.05), new THREE.MeshStandardMaterial({ color: 0x1b1d20, metalness: 0.4, roughness: 0.6 })); plate.position.z = 0.03; gear.pack.add(plate);
@@ -236,9 +254,11 @@ export function removeEnemy(e) {
 
 export function setEnemyGlow(e, g) {
   e.glow = g;
+  const white = (e.pop || 0) > 0;
   for (const m of e.glowMats) {
     if (!m.emissive) continue;
-    if (g > 0.01) { m.emissive.setRGB(0.42 * g, 0.2 * g, 1.0 * g); m.emissiveIntensity = 0.8; }
+    if (white) { m.emissive.setRGB(1, 1, 1); m.emissiveIntensity = 1.6; }
+    else if (g > 0.01) { m.emissive.setRGB(0.42 * g, 0.2 * g, 1.0 * g); m.emissiveIntensity = 0.8; }
     else { m.emissive.copy(m.userData.base); m.emissiveIntensity = m.userData.baseI; }
   }
 }
@@ -384,7 +404,7 @@ export function updateEnemyVisual(e, dt) {
   if (e.flinch > 0) e.flinch -= dt;
   // spawn / death scale
   if (e.state === 'spawn') e.model.scale.setScalar(Math.min(1, e.spawnT / 0.5));
-  else e.model.scale.setScalar(1);
+  else e.model.scale.setScalar(e.pop > 0 ? 1.07 : 1);
   if (e.dead) {
     const d = Math.min(1, 1 - e.fade);
     if (d !== e._dis) { e._dis = d; for (const m of e.char.mats) if (m.userData.rim) m.userData.rim.uDis.value = d; }
@@ -393,6 +413,8 @@ export function updateEnemyVisual(e, dt) {
   }
   // threat ring
   e.ring.position.set(b.position.x, 0.025, b.position.z);
+  if (e.ring.userData.spin) e.ring.rotation.z += dt * e.ring.userData.spin;
+  if (e.pop > 0) { e.pop -= dt; if (e.pop <= 0) setEnemyGlow(e, e.glow); }
   const tele = e.state === 'windup' || e.state === 'aim' || e.state === 'throw' || e.state === 'slamWind' || e.state === 'chargeWind';
   e.tele = (e.tele || 0) + ((tele ? 1 : 0) - (e.tele || 0)) * Math.min(1, dt * 10);
   e.ring.material.opacity = e.dead ? Math.max(0, e.fade - 0.3) : (e.state === 'spawn' ? Math.min(1, e.spawnT * 2) : 0.85 + e.tele * 0.6);

@@ -21,7 +21,7 @@ export function createHero() {
   // hair material: a little emissive lift so the silver reads at night
   for (const m of c.mats) if (m.alphaTest > 0 || /opacity/.test(m.name)) { m.color.setRGB(0.78, 0.82, 0.95); m.emissive = new THREE.Color(0x8a90b0); m.emissiveIntensity = 0.06; }
   // her signature: a violet edge, so she reads at a glance against black-clad Census
-  for (const m of c.mats) if (!(m.alphaTest > 0)) addRim(m, 0x8f6bff, 0.38, 3.0);
+  for (const m of c.mats) if (!(m.alphaTest > 0)) addRim(m, 0x9b6bff, 0.6, 0.72);
 
   const U = { uTime: { value: 0 }, uPower: { value: 0 }, uFlow: { value: new THREE.Vector2() } };
   // Floating silver locks — her "still underwater" signature. Thin, hashed-alpha strands that drift.

@@ -70,10 +70,10 @@ void main() {
     col = uWall * 0.3;
     float fit = uShop > 0.5 ? smoothstep(0.06, 0.0, abs(h.z + uDepth * 0.45)) * step(abs(h.x), hs.x * 0.85)
                             : smoothstep(0.22, 0.0, length(h.xz - vec2(0.0, -uDepth * 0.5)));
-    col += fit * 4.0 * step(0.05, lit);
+    col += fit * 1.6 * step(0.05, lit);
   }
   vec3 L = uLight * (0.035 + 0.95 * lit) * (1.0 - 0.45 * depthK);
-  if (vR.z > 0.86 && uShop < 0.5) L = mix(L, vec3(0.25, 0.42, 0.95) * (0.55 + 0.45 * sin(uTime * 17.0 + vR.z * 90.0) * sin(uTime * 5.3 + vR.z * 7.0)) * lit, 0.65);
+  if (vR.z > 0.86 && uShop < 0.5) L = mix(L, vec3(0.30, 0.62, 0.95) * (0.55 + 0.45 * sin(uTime * 17.0 + vR.z * 90.0) * sin(uTime * 5.3 + vR.z * 7.0)) * lit, 0.65);
   col *= L;
   // midground: curtains just behind the glass, people and counters further in
   if (vR.w >= 0.0) {
@@ -162,13 +162,13 @@ function apartmentAtlas() {
 // ------------------------------------------------------------------ shops
 // back wall (512 x 256) and a midground layer with alpha (counters, aisles, customers)
 const SHOPS = {
-  noodles: { names: ['LUCKY NOODLE', 'KAIJU RAMEN', 'NIGHT BOWL'], sub: 'OPEN LATE · HAND-PULLED', sign: '#ffb03a', light: [1.5, 1.05, 0.62], wall: 0x5a3a28, floorA: 0x2a2018, floorB: 0x3a2c20 },
+  noodles: { names: ['LUCKY NOODLE', 'KAIJU RAMEN', 'NIGHT BOWL'], sub: 'OPEN LATE · HAND-PULLED', sign: '#ff2a8a', light: [1.5, 1.05, 0.62], wall: 0x5a3a28, floorA: 0x2a2018, floorB: 0x3a2c20 },
   mart: { names: ['24/7 MART', 'QUIKSTOP', 'CORNER STORE'], sub: 'COLD DRINKS · LOTTO · ATM', sign: '#ff4040', light: [1.25, 1.45, 1.4], wall: 0xd8dcd8, floorA: 0xb8b8b0, floorB: 0x8c8c86 },
   laundry: { names: ['SUDS & SPIN', 'COIN LAUNDRY'], sub: 'WASH · DRY · FOLD', sign: '#48e0ff', light: [1.0, 1.35, 1.5], wall: 0x8fc0c0, floorA: 0x9aa4a6, floorB: 0x6c7476 },
-  pawn: { names: ['PIER PAWN', 'CASH 4 GOLD'], sub: 'WE BUY · WE SELL · NO QUESTIONS', sign: '#ffd040', light: [1.5, 1.2, 0.8], wall: 0x6a2a24, floorA: 0x3a2a22, floorB: 0x2a1e18 },
+  pawn: { names: ['PIER PAWN', 'CASH 4 GOLD'], sub: 'WE BUY · WE SELL · NO QUESTIONS', sign: '#7dffb0', light: [1.5, 1.2, 0.8], wall: 0x6a2a24, floorA: 0x3a2a22, floorB: 0x2a1e18 },
   bar: { names: ['THE LOW TIDE', 'ANCHOR BAR', 'LAST CALL'], sub: 'COLD BEER · NO CHIPS SCANNED', sign: '#ff2a8a', light: [1.4, 0.75, 0.5], wall: 0x2a1418, floorA: 0x2a1a14, floorB: 0x1c120e },
   pharmacy: { names: ['FARMACIA', 'DRUGS 24H'], sub: 'PRESCRIPTIONS · FIRST AID', sign: '#40ff90', light: [1.3, 1.5, 1.35], wall: 0xe8eee8, floorA: 0xd0d6d0, floorB: 0xa8b0a8 },
-  repair: { names: ['CHIP REPAIR', 'SIGNAL SHOP', 'FIXIT'], sub: 'IMPLANTS FLASHED · CASH ONLY', sign: '#9b7bff', light: [0.9, 0.95, 1.6], wall: 0x24283a, floorA: 0x202430, floorB: 0x2c3040 },
+  repair: { names: ['CHIP REPAIR', 'SIGNAL SHOP', 'FIXIT'], sub: 'IMPLANTS FLASHED · CASH ONLY', sign: '#19e3ff', light: [0.9, 0.95, 1.6], wall: 0x24283a, floorA: 0x202430, floorB: 0x2c3040 },
 };
 const KIND_LIST = ['noodles', 'mart', 'laundry', 'pawn', 'bar', 'pharmacy', 'repair'];
 const glowRect = (x, X, Y, W, H, col, blur = 14) => { x.save(); x.shadowColor = col; x.shadowBlur = blur; x.fillStyle = col; x.fillRect(X, Y, W, H); x.restore(); };
@@ -340,7 +340,7 @@ export function makeFacadeKit(scene, opts) {
     const fasciaH = 0.62, name = closed ? 'CLOSED' : K.names[Math.floor(rnd() * K.names.length)];
     const fb = new THREE.Mesh(new THREE.BoxGeometry(sw + 0.3, fasciaH + 0.12, 0.22), frameMat); fb.position.copy(at(0, G1 + 0.5, 0.11)); fb.rotation.y = ry; scene.add(fb);
     const ft = signTexture(name, closed ? '#8a8a8a' : K.sign, false, closed ? 'BY ORDER OF THE CENSUS' : K.sub);
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(sw + 0.1, fasciaH), new THREE.MeshBasicMaterial({ map: ft, color: closed ? new THREE.Color(0.5, 0.5, 0.5) : new THREE.Color(1.35, 1.35, 1.35), toneMapped: false }));
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(sw + 0.1, fasciaH), new THREE.MeshBasicMaterial({ map: ft, color: closed ? new THREE.Color(0.5, 0.5, 0.5) : new THREE.Color(1.2, 1.2, 1.2), toneMapped: false }));
     face.position.copy(at(0, G1 + 0.5, 0.225)); face.rotation.y = ry; scene.add(face);
     // a striped awning on some shops (shallow, so the camera still sees in)
     if (!closed && rnd() < 0.4) {
@@ -405,7 +405,7 @@ export function makeFacadeKit(scene, opts) {
   kit.window = (p, ry, lit) => wins.push({ p, ry, lit });
   kit.finish = () => {
     const A = apartmentAtlas(), WW = 1.15, WH = 1.6;
-    const im = interiorMaterial({ back: A.back, mid: A.mid, cells: [4, 2], w: WW, h: WH, depth: 3.0, wall: 0x7a6a58, floorA: 0x5a4030, light: new THREE.Color(1.55, 1.12, 0.72), shop: false });
+    const im = interiorMaterial({ back: A.back, mid: A.mid, cells: [4, 2], w: WW, h: WH, depth: 3.0, wall: 0x7a6a58, floorA: 0x5a4030, light: new THREE.Color(1.0, 0.72, 0.46), shop: false });
     kit.mats.push(im);
     const n = wins.length;
     const inside = new THREE.InstancedMesh(new THREE.PlaneGeometry(WW, WH), im, n);
