@@ -12,6 +12,7 @@ import { FX } from './fx.js';
 import { Tether } from './fx.js';
 import { buildLevel, buildEnvironment, Wet } from './level.js';
 import { makeCyber } from './cyber.js';
+import { makeDigitizer } from './digitize.js';
 import { makeProp, removeProp, setGlow, applyDamageLook, populateZone, DEFS } from './props.js';
 import { createHero, updateHeroVisual, blendLocomotion } from './hero.js';
 import { spawnEnemy, removeEnemy, updateEnemyVisual, setRagdoll, setEnemyGlow, ETYPES } from './enemies.js';
@@ -179,6 +180,7 @@ async function boot() {
   buildEnvironment(renderer, scene);
   level = buildLevel(scene, world, wet); G.level = level; level.facade.sfx = sfx;
   cyber = makeCyber(scene, level, wet, world); G.cyber = cyber;
+  G.digit = makeDigitizer(scene);
   // Upright characters are velocity-driven with locked rotation; cannon's friction would pin them in place,
   // so they get a frictionless material. Ragdolls drop the material and use normal friction.
   world.addContactMaterial(new CANNON.ContactMaterial(G.charMat, G.groundMat, { friction: 0, restitution: 0 }));
@@ -2694,6 +2696,7 @@ function renderFrame(dt, rdt) {
   FX.numbers.update(rdt, camera);
   level.update(rdt, camState.look);
   if (cyber) safe(() => cyber.update(rdt, camState.look, heroCenter()));
+  if (G.digit) safe(() => G.digit.update(rdt, G.props));
   updateUI(rdt);
 }
 const PERF = { js: 0, render: 0, rdt: 0 }; window.__perf = PERF;
@@ -2719,6 +2722,7 @@ window.__dbg = {
   ending: () => startEnding(),
   surge: () => { unlockPower('surge', true); doSurge(); }, ult: () => { unlockPower('root', true); G.ult = 100; startUlt(); },
   unlock: (k) => unlockPower(k),
+  grabProp: (type) => { const hp = hero.body.position; let best = null, bd = 1e9; for (const o of G.props) { if (!o.alive || o.held || (type && o.type !== type)) continue; const d = Math.hypot(o.body.position.x - hp.x, o.body.position.z - hp.z); if (d < bd) { bd = d; best = o; } } if (!best) return null; startHold(77, best, G.W / 2, G.H / 2); return [best.type, Math.round(bd * 10) / 10]; },
   grabEnemy: () => { const e = G.enemies.find(e => !e.dead && e.def.grip && e.state !== 'spawn'); if (!e) return false; startHold(77, e, G.W / 2, G.H / 2); return true; },
   release: (vx, vy) => { const h = G.holds.get(77); if (!h) return false; endHold(h); if (vx) throwObj(h.obj, G.W / 2, G.H / 2, vx, vy, Math.hypot(vx, vy)); else dropObj(h.obj); return true; },
   closeup: (on, dist = 3.2, h = 1.4, yawOff = 0) => { G.closeup = on ? { dist, h, yawOff } : null; },
