@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { makeDecals } from './ground.js';
 import { G, GRP, ALL, rand } from './state.js';
 import { A } from './assets.js';
 import { makeFacadeKit } from './facade.js';
@@ -31,17 +32,22 @@ export function signTexture(text, color, vertical, sub) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
+// Harrow is a tenement street, not a highway (environment.md Fix 6): double yellow, parking lanes with bay ticks, worn
+// crosswalks; paint wears off in the wheel paths
 function markingsTexture() {
   const W = 512, H = 1664; const [c, x] = canvas(W, H);
-  const m = (v) => v * 32;
-  x.fillStyle = 'rgba(190,172,120,0.75)'; x.fillRect(m(8) - 7, 0, 4, H); x.fillRect(m(8) + 3, 0, 4, H);
-  x.fillStyle = 'rgba(225,225,220,0.85)';
-  for (const lx of [4, 12]) for (let z = 0; z < 52; z += 4) x.fillRect(m(lx) - 3, m(z), 6, m(2));
-  x.fillRect(m(0.35), 0, 5, H); x.fillRect(m(15.65) - 5, 0, 5, H);
-  for (const cz of [6, 44]) for (let i = 0; i < 16; i += 1.1) x.fillRect(m(i + 0.2), m(cz), m(0.55), m(3));
+  const m = (v) => v * 32, WH = 'rgba(214,210,198,0.75)';
+  x.fillStyle = 'rgba(196,154,58,0.75)'; x.fillRect(m(8) - 7, 0, 4, H); x.fillRect(m(8) + 3, 0, 4, H);
+  x.fillStyle = WH;
+  for (const lx of [2.4, 13.6]) { x.fillRect(m(lx) - 2, 0, 4, H); const dir = lx < 8 ? -1 : 1; for (let z = 1.5; z < 52; z += 6.1) x.fillRect(dir < 0 ? m(lx - 0.5) : m(lx), m(z), m(0.5), 4); }
+  for (const cz of [6, 44]) for (let i = 0.6; i < 15.4; i += 1.1) x.fillRect(m(i + 0.2), m(cz), m(0.55), m(3));
   x.fillRect(m(0.5), m(9.6), m(7.3), 10); x.fillRect(m(8.2), m(43.2), m(7.3), 10);
   const img = x.getImageData(0, 0, W, H), d = img.data;
-  for (let i = 3; i < d.length; i += 4) if (d[i] > 0) d[i] *= 0.45 + rnd() * 0.55;
+  for (let i = 3; i < d.length; i += 4) if (d[i] > 0) {
+    const px = ((i - 3) / 4) % W, xm = px / 32 - 8;
+    const worn = [1.6, 3.6, 7.0].some(b => Math.abs(Math.abs(xm) - b) < 0.25) ? 0.45 : 1;
+    d[i] *= (0.45 + rnd() * 0.55) * worn;
+  }
   x.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
 }
@@ -92,6 +98,14 @@ function puddleTexture() {
   x.filter = 'none';
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 }
+// 30 soft blotches (0.8-1.1 once remapped), tiled every 23 m, multiplied into every floor's colour and roughness
+function macroTexture() {
+  const S = 256; const [c, x] = canvas(S, S); x.fillStyle = 'rgb(170,170,170)'; x.fillRect(0, 0, S, S);
+  let q = 23; const r = () => { q = (q * 16807) % 2147483647; return (q - 1) / 2147483646; };
+  for (let i = 0; i < 30; i++) { const px = r() * S, py = r() * S, rad = 20 + r() * 50, v = Math.round(r() * 255);
+    for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) { const g = x.createRadialGradient(px + ox, py + oy, 0, px + ox, py + oy, rad); g.addColorStop(0, `rgba(${v},${v},${v},0.6)`); g.addColorStop(1, `rgba(${v},${v},${v},0)`); x.fillStyle = g; x.fillRect(px + ox - rad, py + oy - rad, rad * 2, rad * 2); } }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
 // sodium-lit cloud base: only the reflection camera sees it (layer 1), so puddles mirror a lit sky instead of black
 function cloudTexture() {
   const S = 256; const [c, x] = canvas(S, S); x.fillStyle = '#000'; x.fillRect(0, 0, S, S);
@@ -109,7 +123,7 @@ export class Wet {
     this.cam = new THREE.PerspectiveCamera();
     this.texMatrix = new THREE.Matrix4();
     this.enabled = true;
-    this.uniforms = { tRefl: { value: this.rt.texture }, uTexMatrix: { value: this.texMatrix }, tPuddle: { value: puddleTexture() }, uTime: { value: 0 }, uWet: { value: 1 }, uReflOn: { value: 1 } };
+    this.uniforms = { tRefl: { value: this.rt.texture }, uTexMatrix: { value: this.texMatrix }, tPuddle: { value: puddleTexture() }, tMacro: { value: macroTexture() }, uTime: { value: 0 }, uWet: { value: 1 }, uReflOn: { value: 1 } };
     this.hide = [];
     this.cam.layers.enable(1);
     this.sky = new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(Math.PI / 2), new THREE.ShaderMaterial({
@@ -168,11 +182,13 @@ export class Wet {
       sh.uniforms.uReflect = { value: reflect }; sh.uniforms.uPud = { value: puddles };
       sh.vertexShader = 'uniform mat4 uTexMatrix; varying vec4 vRefl; varying vec3 vWPos;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
         vec4 wp4 = modelMatrix * vec4(transformed, 1.0); vWPos = wp4.xyz; vRefl = uTexMatrix * wp4;`);
-      sh.fragmentShader = `uniform sampler2D tRefl; uniform sampler2D tPuddle; uniform float uTime; uniform float uWet; uniform float uReflOn; uniform vec4 uArea; uniform float uReflect; uniform float uPud; uniform vec4 uGut;
+      sh.fragmentShader = `uniform sampler2D tRefl; uniform sampler2D tPuddle; uniform sampler2D tMacro; uniform float uTime; uniform float uWet; uniform float uReflOn; uniform vec4 uArea; uniform float uReflect; uniform float uPud; uniform vec4 uGut;
         varying vec4 vRefl; varying vec3 vWPos; float gPud;
       ` + sh.fragmentShader
         .replace('#include <map_fragment>', `#include <map_fragment>
           vec2 puv = (vWPos.xz - uArea.xy) / uArea.zw;
+          float macro = texture2D(tMacro, vWPos.xz / 23.0).r * 0.3 + 0.8;   // breaks the 2-3 m tile repeat (Fix 6)
+          diffuseColor.rgb *= macro;
           float pm = texture2D(tPuddle, puv).r * uPud;
           gPud = smoothstep(0.5, 0.85, pm) * uWet;
           gPud = max(gPud, 0.9 * uGut.w * uWet * (1.0 - smoothstep(0.0, uGut.z, min(abs(vWPos.x - uGut.x), abs(vWPos.x - uGut.y)))));
@@ -180,7 +196,7 @@ export class Wet {
           float soak = smoothstep(0.3, 0.5, pm) * (1.0 - smoothstep(0.5, 0.62, pm));   // a dark soaked rim: a crisp edge from above
           diffuseColor.rgb *= 1.0 - 0.2 * soak * uWet;`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-          roughnessFactor = mix(roughnessFactor * mix(1.0, 0.62, uWet), 0.05, gPud);`)
+          roughnessFactor = mix(roughnessFactor * mix(1.0, 0.62, uWet) * macro, 0.05, gPud);`)
         .replace('#include <opaque_fragment>', `
           // the rain never ripples the water (STORY.md: RAIN = SAFE, it's a replay): still mirrors under falling rain
           vec4 rc = vRefl; rc.xy += normal.xy * 0.12 * (1.0 - gPud) * rc.w;
@@ -193,7 +209,7 @@ export class Wet {
           outgoingLight = outgoingLight * (1.0 - rAmt * 0.5) + refl * rAmt * mix(0.45, 1.0, fres);
           #include <opaque_fragment>`);
     };
-    mat.customProgramCacheKey = () => 'wet2' + reflect + puddles;
+    mat.customProgramCacheKey = () => 'wet3' + reflect + puddles;
   }
 }
 const _n = new THREE.Vector3(), _rp = new THREE.Vector3(), _cp = new THREE.Vector3(), _rot = new THREE.Matrix4(), _look = new THREE.Vector3(), _view = new THREE.Vector3();
@@ -263,7 +279,7 @@ export function buildLevel(scene, world, wet) {
   wet.patch(street.material, { reflect: 1, puddles: 1, gut: [-8.3, 8.3, 0.35, 1] });
   street.rotation.x = -Math.PI / 2; street.position.set(0, 0, -1); street.receiveShadow = true; scene.add(street);
   wet.hide.push(street);
-  const marks = new THREE.Mesh(new THREE.PlaneGeometry(16, 52), new THREE.MeshStandardMaterial({ map: markingsTexture(), transparent: true, roughness: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  const marks = new THREE.Mesh(new THREE.PlaneGeometry(16, 52), new THREE.MeshStandardMaterial({ map: markingsTexture(), transparent: true, roughness: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
   marks.rotation.x = -Math.PI / 2; marks.position.set(0, 0.004, -1); marks.receiveShadow = true; scene.add(marks); wet.hide.push(marks);
   for (const sx of [-1, 1]) {
     const sw = new THREE.Mesh(new THREE.PlaneGeometry(6, 52), pbr('concrete_pavement', 6 / 1.8, 52 / 1.8, { color: new THREE.Color(0.82, 0.8, 0.78) }));
@@ -271,6 +287,8 @@ export function buildLevel(scene, world, wet) {
     sw.rotation.x = -Math.PI / 2; sw.position.set(sx * 11.5, 0.002, -1); sw.receiveShadow = true; scene.add(sw); wet.hide.push(sw);
     const curb = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 52), pbr('concrete_wall_008', 0.2, 18));
     curb.position.set(sx * 8.56, 0.0, -1); curb.receiveShadow = true; scene.add(curb);
+    const pan = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 52), pbr('concrete_wall_008', 0.2, 20, { color: new THREE.Color(0.55, 0.55, 0.55), roughness: 0.3 }));   // gutter pan
+    pan.rotation.x = -Math.PI / 2; pan.position.set(sx * 8.21, 0.003, -1); pan.receiveShadow = true; scene.add(pan);
   }
   const fill = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), new THREE.MeshStandardMaterial({ color: 0x0f1013, roughness: 1 }));
   fill.rotation.x = -Math.PI / 2; fill.position.set(0, -0.02, -20); scene.add(fill); wet.hide.push(fill);
@@ -666,7 +684,8 @@ export function buildLevel(scene, world, wet) {
       streaks.count = n; streaks.instanceMatrix.needsUpdate = true; sa.needsUpdate = true;
     };
   }
-  L.finishBeacons();
+  L.finishBeacons(); L.finishCables();
+  L.decals = makeDecals(scene, ZONES, { stacks: L.stacks });
   return L;
 }
 
@@ -846,6 +865,23 @@ function buildPier9(C) {
   };
   const decal = (tex, w, h, x, y, z, ry, opacity = 0.9) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, transparent: true, opacity, roughness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })); m.position.set(x, y, z); m.rotation.y = ry; scene.add(m); return m; };
   const glowMat = (r, g, b) => new THREE.MeshBasicMaterial({ color: new THREE.Color(r, g, b), toneMapped: false });
+  // overhead cables as flat ribbons facing up (environment.md Fix 7): THREE.Line is one device pixel wide on a phone.
+  // Every ribbon goes into one merged, shadow-casting mesh at the end of the build.
+  const ribbonGeos = [], ribbonPts = [];
+  const cable = (a, b, sag, width = 0.03, insulators = true) => {
+    const n = 16, pos = [], idx = [], dir = new THREE.Vector3().subVectors(b, a), side = new THREE.Vector3(-dir.z, 0, dir.x).normalize().multiplyScalar(width / 2), pts = [];
+    for (let i = 0; i <= n; i++) { const t = i / n, p = a.clone().lerp(b, t); p.y -= sag * 4 * t * (1 - t); pts.push(p); pos.push(p.x - side.x, p.y, p.z - side.z, p.x + side.x, p.y, p.z + side.z); if (i) { const k = (i - 1) * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); ribbonGeos.push(g);
+    if (insulators) for (const e of [a, b]) ribbonPts.push(e);
+    return pts;
+  };
+  L.finishCables = () => {
+    if (!ribbonGeos.length) return;
+    const m = new THREE.Mesh(mergeGeometries(ribbonGeos.map(g => g.toNonIndexed())), new THREE.MeshStandardMaterial({ color: 0x0c0c0d, roughness: 0.35, metalness: 0.3, side: THREE.DoubleSide }));
+    m.castShadow = true; m.userData.noBatch = true; scene.add(m);
+    const ins = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 0.08, 0.12), new THREE.MeshStandardMaterial({ color: 0x2a2b2e, roughness: 0.5 }), ribbonPts.length);
+    ribbonPts.forEach((p, i) => ins.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z))); scene.add(ins);
+  };
   seed = 9191;
 
   // ---------------- PIER 9 MARKET: a covered night market lane ----------------
@@ -900,11 +936,12 @@ function buildPier9(C) {
   }
   // festoon lights strung across the lane
   const bulbs = [];
-  for (let k = 0; k < 6; k++) {
-    const z = -29.5 - k * 6.4, pts = [];
-    for (let i = 0; i <= 12; i++) { const t = i / 12; const p = new THREE.Vector3(-7.5 + 15 * t, 6.3 - Math.sin(t * Math.PI) * 1.2, z + t * 2.2); pts.push(p); if (i > 0 && i < 12) bulbs.push(p); }
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x0b0b0b })); scene.add(line);
-    if (k % 2 === 0) addSpot(0, 5.2, z + 1.1, 0xffbe70, 20, 13, 1.6);
+  for (let k = 0; k < 9; k++) {
+    // nine strands (six old + three new between them) at alternating heights, as ribbons so they read on a phone
+    const z = -29.5 - k * 4.27, top = k % 2 ? 5.6 : 6.3;
+    const pts = cable(new THREE.Vector3(-7.5, top, z), new THREE.Vector3(7.5, top, z + 2.2), 1.2, 0.02, false);
+    for (let i = 1; i < 16; i += 1.4) bulbs.push(pts[Math.round(i)]);
+    if (k % 3 === 0) addSpot(0, 5.2, z + 1.1, 0xffbe70, 20, 13, 1.6);
   }
   const bulbIM = new THREE.InstancedMesh(new THREE.SphereGeometry(0.075, 8, 6), glowMat(2.6, 1.7, 0.85), bulbs.length);
   bulbs.forEach((p, i) => bulbIM.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z))); scene.add(bulbIM);
@@ -935,6 +972,23 @@ function buildPier9(C) {
   block(4.6, 30, -76, -71.5, 4.6, ['-x', '-z', '+x'], { noStore: ['-x', '+x'], storeW: 5, lit: 0.22, skylights: 3 });   // one storey on Yard Road
   block(4.6, 30, -71.5, -64.4, 9, ['-x', '+z', '-z', '+x'], { noStore: ['-x', '+z', '-z'], storeW: 5, lit: 0.22 });
   block(4.6, 30, -92.4, -82, 11, ['-x', '+z', '-z', '+x'], { noStore: ['-x'], storeW: 5, lit: 0.22 });
+  // the overhead layer (environment.md Fix 7): cables wall to wall and five laundry lines, only where both walls are tall
+  { let q = 611; const qr = () => { q = (q * 16807) % 2147483647; return (q - 1) / 2147483646; };
+    for (const z of [-65.5, -67.3, -69.6, -83.2, -85.8, -88.1, -90.6]) cable(new THREE.Vector3(-4.6, 6 + qr() * 3, z), new THREE.Vector3(4.6, 6 + qr() * 3, z + (qr() - 0.5) * 2.4), 0.32, 0.03);
+    const CL = [0x6e5e50, 0x4b5868, 0x7c7a70, 0x5a3a3a, 0x3e4a3a, 0x8a7f6a].map(c => new THREE.Color(c));
+    for (const zl of [-66.4, -68.8, -70.8, -84.6, -89.2]) {
+      const y = 5 + qr() * 0.6, pts = cable(new THREE.Vector3(-4.6, y, zl), new THREE.Vector3(4.6, y, zl + (qr() - 0.5) * 0.6), 0.15, 0.015), gs = [];
+      const n = 5 + Math.floor(qr() * 4);
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5 + (qr() - 0.5) * 0.4) / n, p = pts[Math.round(t * 16)], w = 0.5 + qr() * 0.3, h = 0.6 + qr() * 0.4;
+        const g = new THREE.PlaneGeometry(w, h); g.rotateX(-0.2); g.translate(p.x, p.y - h / 2, p.z);
+        const c = CL[Math.floor(qr() * CL.length)], col = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < col.length; i += 3) col.set([c.r, c.g, c.b], i);
+        g.setAttribute('color', new THREE.BufferAttribute(col, 3)); gs.push(g);
+      }
+      const cm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide, transparent: true, opacity: 1 });
+      const cloth = new THREE.Mesh(mergeGeometries(gs), cm); cloth.castShadow = true; scene.add(cloth); L.noBatch.push(cloth);
+      L.fades.push({ objs: [cloth], mats: [cm], low: 0.2, test: (c) => c.z < zl + 0.5 && c.z > zl - 4 && Math.abs(c.x) < 6 });
+    } }
   const dumpMat = new THREE.MeshStandardMaterial({ color: 0x1f3a2a, roughness: 0.6, metalness: 0.5 });
   for (const [x, z, ry] of [[-3.55, -70.5, 0], [3.5, -82.5, 0], [-3.5, -88.6, 0]]) {
     mesh(new THREE.BoxGeometry(1.0, 1.25, 2.0), dumpMat, x, 0.625, z, ry);
@@ -1055,7 +1109,7 @@ function buildPier9(C) {
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(260, 200), new THREE.MeshStandardMaterial({ color: 0x020509, roughness: 0.06, metalness: 0.85, envMapIntensity: 1.5 }));
   sea.rotation.x = -Math.PI / 2; sea.position.set(-50, -1.1, -170); scene.add(sea); wet.hide.push(sea);
 
-  buildExpansion(C, { metal, rusty, stat, statCyl, mesh, floor, decal, glowMat, conc, lip, yellow, cont, contMats, contGeo, counterMat, canvasCols, lanternMat, redLights, haloTex, coneMat, lampSrc, crateGeo, boxMats, iceMat });
+  buildExpansion(C, { metal, rusty, stat, statCyl, mesh, floor, decal, glowMat, conc, cable, lip, yellow, cont, contMats, contGeo, counterMat, canvasCols, lanternMat, redLights, haloTex, coneMat, lampSrc, crateGeo, boxMats, iceMat });
   buildLandmarks(C, { metal, stat, statCyl, mesh, glowMat });
   L.updateExtra = (dt, center) => {
     if (L.roofLed) L.roofLed.visible = ((G.rt || 0) * 0.5) % 1 < 0.5;
@@ -1094,7 +1148,7 @@ function buildExpansion(C, H) {
     lane(4.6, 30, -82, 1);      // yard road
     lane(14.2, 40, -122, 1);    // transit shed
   }
-  const { metal, rusty, stat, statCyl, mesh, floor, decal, glowMat, conc, cont, contMats, contGeo, counterMat, haloTex, coneMat, lampSrc, crateGeo, boxMats, iceMat } = H;
+  const { metal, rusty, stat, statCyl, mesh, floor, decal, glowMat, conc, cable, cont, contMats, contGeo, counterMat, haloTex, coneMat, lampSrc, crateGeo, boxMats, iceMat } = H;
   seed = 7171;
   // dark fill under the east of the city so nothing shows through the gaps
   { const f = new THREE.Mesh(new THREE.PlaneGeometry(110, 200), new THREE.MeshStandardMaterial({ color: 0x0f1013, roughness: 1 })); f.rotation.x = -Math.PI / 2; f.position.set(45, -0.03, -60); scene.add(f); wet.hide.push(f); }
@@ -1221,11 +1275,15 @@ function buildExpansion(C, H) {
     for (const [ax, az, ang] of [[32.6, -46.6, 0.6], [33.4, -46.6, -0.6], [32.6, -46.0, -0.6], [33.4, -46.0, 0.6]]) mesh(new THREE.BoxGeometry(1.1, 0.04, 0.04), metal, ax, 3.32, az, ang, false);
     { const tarp = new THREE.PlaneGeometry(3, 2, 4, 3); tarp.rotateX(-Math.PI / 2); const P = tarp.attributes.position; for (let i = 0; i < P.count; i++) { const px = P.getX(i), pz = P.getZ(i); P.setY(i, (px > 1.2 && pz < -0.6) ? 0.3 : 0.02 * Math.sin(px * 3)); } tarp.computeVertexNormals();
       const tp = new THREE.Mesh(tarp, new THREE.MeshStandardMaterial({ color: 0x2a3a4a, roughness: 0.75, side: THREE.DoubleSide })); tp.position.set(36.4, 3.17, -46.3); tp.castShadow = true; scene.add(tp); } }
-  // catenary wires
-  for (const [ax, az, bx, bz] of [[8, -45, 49, -45], [47, -31, 47, -45]]) {
-    const pts = []; for (let i = 0; i <= 20; i++) { const t = i / 20; pts.push(new THREE.Vector3(ax + (bx - ax) * t, 6.2 - Math.sin(t * Math.PI) * 0.4, az + (bz - az) * t)); }
-    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x0b0b0b })));
-  }
+  // catenary (environment.md Fix 7): poles in pairs, span ribbons at 6.6 m, a contact wire over the track with droppers
+  { const poleM = new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.5, metalness: 0.6 });
+    const pair = (ax, az, bx, bz) => { for (const [px, pz] of [[ax, az], [bx, bz]]) mesh(new THREE.CylinderGeometry(0.12, 0.15, 7.2, 8), poleM, px, 3.6, pz, 0); cable(new THREE.Vector3(ax, 6.6, az), new THREE.Vector3(bx, 6.6, bz), 0.08, 0.035); };
+    for (const z of [-31, -43]) pair(44.3, z, 49.7, z);
+    for (const x of [10, 22, 34]) pair(x, -42.3, x, -47.7);
+    for (const [ax, az, bx, bz] of [[8, -45, 49, -45], [47, -31, 47, -45]]) {
+      cable(new THREE.Vector3(ax, 6.2, az), new THREE.Vector3(bx, 6.2, bz), 0.25, 0.02, false);
+      const L2 = Math.hypot(bx - ax, bz - az); for (let d = 2; d < L2; d += 4) { const t = d / L2; mesh(new THREE.BoxGeometry(0.015, 0.4, 0.015), poleM, ax + (bx - ax) * t, 6.4, az + (bz - az) * t, 0, false); }
+    } }
   addSpot(20, 4.5, -45, 0xd8f2ff, 14, 11, 1.7, 1); addSpot(40, 4.5, -45, 0xffbf80, 16, 12, 1.6); addSpot(47, 4.5, -36, 0xffbf80, 16, 12, 1.6);
   decal(decalTexture((x, w, h) => { x.font = '900 64px Inter, Arial'; x.fillStyle = '#e9e4da'; x.textAlign = 'center'; x.globalAlpha = 0.8; x.fillText('WHO COUNTS THE COUNTERS?', w / 2, h / 2 + 22); }, 1024, 128), 6, 0.75, 20, 2.6, -47.95, 0, 0.8);
 
