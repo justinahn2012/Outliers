@@ -278,13 +278,15 @@ export function buildLevel(scene, world, wet) {
   // Brick facades with real glass windows (instanced), storefronts and rooftop clutter
   // facades: mostly soot-dark brick, with red brick, industrial brick and painted render mixed in (seeded, so the city is stable)
   const PAINT = [[0.55, 0.62, 0.6], [0.72, 0.62, 0.48], [0.5, 0.52, 0.6], [0.66, 0.5, 0.47], [0.6, 0.6, 0.58]];
+  // facades fall off with height (lighting_vfx.md Fix 6): staticBatch bakes userData.falloff into vertex colours, so the
+  // street stays the brightest band, upper floors go dark and lit windows pop
   const brick = (w, h, rot) => {
-    const r = rnd();
-    if (r < 0.42) return pbr('dark_brick_wall', w / 2.6, h / 2.6);
-    if (r < 0.62) return pbr('red_brick', w / 2.2, h / 2.2, { color: new THREE.Color(0.62, 0.55, 0.52) });
-    if (r < 0.82) return pbr('factory_brick', w / 2.4, h / 2.4, { color: new THREE.Color(0.8, 0.76, 0.72) });
-    const c = PAINT[Math.floor(rnd() * PAINT.length)];
-    return pbr('plaster_wall', w / 3.2, h / 3.2, { color: new THREE.Color(c[0], c[1], c[2]) });
+    const r = rnd(); let m;
+    if (r < 0.42) m = pbr('dark_brick_wall', w / 2.6, h / 2.6);
+    else if (r < 0.62) m = pbr('red_brick', w / 2.2, h / 2.2, { color: new THREE.Color(0.62, 0.55, 0.52) });
+    else if (r < 0.82) m = pbr('factory_brick', w / 2.4, h / 2.4, { color: new THREE.Color(0.8, 0.76, 0.72) });
+    else { const c = PAINT[Math.floor(rnd() * PAINT.length)]; m = pbr('plaster_wall', w / 3.2, h / 3.2, { color: new THREE.Color(c[0], c[1], c[2]) }); }
+    m.userData.falloff = true; return m;
   };
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x17181b, roughness: 0.95 });
   const kit = makeFacadeKit(scene, { rnd, signTexture });
@@ -298,8 +300,13 @@ export function buildLevel(scene, world, wet) {
     for (let i = 0; i < 6; i++) { x.fillStyle = 'rgba(70,72,78,0.18)'; x.beginPath(); x.ellipse(Math.random() * 256, Math.random() * 256, 20 + Math.random() * 40, 10 + Math.random() * 20, Math.random() * 3, 0, 6.28); x.fill(); }
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
   })();
-  const tarMat = new THREE.MeshStandardMaterial({ map: cloneTex(A.tex.tarred_gravel_d, 1, 1), normalMap: cloneTex(A.tex.tarred_gravel_n, 1, 1), roughnessMap: cloneTex(A.tex.tarred_gravel_arm, 1, 1), color: new THREE.Color(0.62, 0.62, 0.66), roughness: 1, metalness: 0.05, envMapIntensity: 0.6 });
-  const parapetMat = pbr('concrete_wall_008', 1, 1);
+  // roofs are dark glossy foreground silhouettes, clearly not floor (lighting Fix 6)
+  const tarMat = new THREE.MeshStandardMaterial({ map: cloneTex(A.tex.tarred_gravel_d, 1, 1), normalMap: cloneTex(A.tex.tarred_gravel_n, 1, 1), roughnessMap: cloneTex(A.tex.tarred_gravel_arm, 1, 1), color: new THREE.Color(0.34, 0.34, 0.36), roughness: 0.4, metalness: 0.05, envMapIntensity: 0.6 });
+  const parapetMat = pbr('concrete_wall_008', 1, 1); parapetMat.roughness = 0.35;
+  // one blinking red LED on a condenser of every big roof: rooftop interest without a pool light (one instanced draw)
+  const roofLed = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.5, 0.42, 0.26), toneMapped: false }), 160);
+  roofLed.count = 0; roofLed.frustumCulled = false; scene.add(roofLed); L.roofLed = roofLed;
+  const _lm = new THREE.Matrix4();
   const acMat = new THREE.MeshStandardMaterial({ color: 0x8a8f94, roughness: 0.45, metalness: 0.7 }), grilleMat = new THREE.MeshStandardMaterial({ color: 0x1a1c1f, roughness: 0.7, metalness: 0.5 });
   const pipeMat = new THREE.MeshStandardMaterial({ color: 0x5d6166, roughness: 0.5, metalness: 0.75 }), tankMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2c, roughness: 0.85 });
   const skyMat = new THREE.MeshStandardMaterial({ color: 0x0a0d12, roughness: 0.1, metalness: 0.8, envMapIntensity: 1.4 }), skyLit = new THREE.MeshStandardMaterial({ color: 0x050505, emissive: 0xffc890, emissiveIntensity: 0.55, roughness: 0.2 });
@@ -318,6 +325,7 @@ export function buildLevel(scene, world, wet) {
       const [ax, az] = inner(); const s = 0.9 + rnd() * 0.6, ry = rnd() < 0.5 ? 0 : Math.PI / 2;
       const u = new THREE.Mesh(new THREE.BoxGeometry(s * 1.3, s * 0.75, s), acMat); u.position.set(ax, h + s * 0.375, az); u.rotation.y = ry; u.castShadow = true; scene.add(u);
       const fan = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.32, s * 0.32, 0.03, 16), grilleMat); fan.position.set(ax, h + s * 0.76, az); scene.add(fan);
+      if (k === 0 && area >= 110 && roofLed.count < 160) { _lm.makeTranslation(ax + s * 0.5 * (ry ? 0 : 1), h + s * 0.78, az + s * 0.4 * (ry ? 1 : 0)); roofLed.setMatrixAt(roofLed.count++, _lm); }
     }
     for (let k = 0; k < 2 + Math.floor(area / 160); k++) {                          // vent stacks
       const [vx, vz] = inner(); const ph = 0.6 + rnd() * 0.9;
@@ -343,7 +351,7 @@ export function buildLevel(scene, world, wet) {
     const mats = axis === 'x'
       ? [x1 < 0 ? face : roofMat, x1 < 0 ? roofMat : face, roofMat, roofMat, roofMat, roofMat]
       : [roofMat, roofMat, roofMat, roofMat, face, roofMat];
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d, 1, Math.max(1, Math.ceil(h / 2.5)), 1), mats);
     m.position.set((x0 + x1) / 2, h / 2, (z0 + z1) / 2); m.receiveShadow = true; scene.add(m);
     // windows on the street face
     const fx = axis === 'x' ? (x1 < 0 ? x1 + 0.02 : x0 - 0.02) : 0;
@@ -366,7 +374,7 @@ export function buildLevel(scene, world, wet) {
     const mats = [roofMat, roofMat, roofMat, roofMat, roofMat, roofMat];
     const idx = { '+x': 0, '-x': 1, '+z': 4, '-z': 5 };
     for (const f of faces) mats[idx[f]] = brick(f[1] === 'x' ? d : w, h);
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d, 1, Math.max(1, Math.ceil(h / 2.5)), 1), mats);
     m.position.set((x0 + x1) / 2, h / 2, (z0 + z1) / 2); m.receiveShadow = true; scene.add(m);
     if (opts.collide !== false) wall((x0 + x1) / 2, h / 2, (z0 + z1) / 2, w / 2, h / 2, d / 2);
     for (const f of faces) {
@@ -938,6 +946,7 @@ function buildPier9(C) {
   buildExpansion(C, { metal, rusty, stat, statCyl, mesh, floor, decal, glowMat, conc, lip, yellow, cont, contMats, contGeo, counterMat, canvasCols, lanternMat, redLights, haloTex, coneMat, lampSrc, crateGeo, boxMats, iceMat });
   buildLandmarks(C, { metal, stat, statCyl, mesh, glowMat });
   L.updateExtra = (dt, center) => {
+    if (L.roofLed) L.roofLed.visible = ((G.rt || 0) * 0.5) % 1 < 0.5;
     if (G.fx) L.vents.forEach(([vx, vz], i) => { if (Math.abs(vz - center.z) < 22 && Math.abs(vx - center.x) < 28 && Math.random() < 0.55) { const c = L.ventCol[i], lo = Math.random() < 0.6; G.fx.smoke.emit(vx + rand(-0.3, 0.3), 0.1, vz + rand(-0.3, 0.3), rand(-0.15, 0.15), rand(0.8, 1.6), rand(-0.15, 0.15), 0.22 + c[0] * (lo ? 0.4 : 0.15), 0.23 + c[1] * (lo ? 0.4 : 0.15), 0.27 + c[2] * (lo ? 0.4 : 0.15), rand(1.2, 2.2), 0.18, 0.9, -0.15, 0.5, 0.55); } });
     if (L.ventShafts) L.ventShafts.uniforms.uT.value = G.rt;
     const blink = (G.rt % 1.6) < 0.5 ? 1 : 0.05;

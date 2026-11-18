@@ -92,7 +92,8 @@ void main() {
                             : smoothstep(0.22, 0.0, length(h.xz - vec2(0.0, -uDepth * 0.5)));
     col += fit * 1.6 * step(0.05, lit);
   }
-  vec3 L = uLight * (0.035 + 0.95 * lit) * (1.0 - 0.45 * depthK);
+  // unlit rooms aren't black holes: a dim blue-grey room tint (lighting Fix 6)
+  vec3 L = (uLight * 0.95 * lit + mix(vec3(0.106, 0.145, 0.188), uLight, 0.3) * 0.08) * (1.0 - 0.45 * depthK);
   if (vR.z > 0.86 && uShop < 0.5) L = mix(L, vec3(0.30, 0.62, 0.95) * (0.55 + 0.45 * sin(uTime * 17.0 + vR.z * 90.0) * sin(uTime * 5.3 + vR.z * 7.0)) * lit, 0.65);
   col *= L;
   // midground: curtains just behind the glass, people and counters further in
@@ -317,13 +318,22 @@ function remnantTexture(seed) {
   for (const [px, py] of pts) { x.beginPath(); x.moveTo(px, py); const a = Math.atan2(py - S / 2, px - S / 2); x.lineTo(px + Math.cos(a + (R() - 0.5) * 0.6) * S, py + Math.sin(a + (R() - 0.5) * 0.6) * S); x.stroke(); }
   return tex(c);
 }
+// a bullet crack (lighting Fix 10): an impact core, jagged radial cracks that thin out, a few partial rings. Not a web.
 function crackTexture() {
-  const S = 256, [c, x] = cv(S, S); x.clearRect(0, 0, S, S);
-  x.strokeStyle = 'rgba(255,255,255,0.9)'; x.lineWidth = 1.4;
-  const arms = 13, ends = [];
-  for (let i = 0; i < arms; i++) { const a = i / arms * Math.PI * 2 + R() * 0.3; let px = S / 2, py = S / 2; x.beginPath(); x.moveTo(px, py); const pts = []; for (let k = 1; k <= 6; k++) { const r = k * S / 13; px = S / 2 + Math.cos(a + (R() - 0.5) * 0.25) * r; py = S / 2 + Math.sin(a + (R() - 0.5) * 0.25) * r; x.lineTo(px, py); pts.push([px, py]); } x.stroke(); ends.push(pts); }
-  for (let k = 0; k < 5; k++) { x.beginPath(); for (let i = 0; i <= arms; i++) { const p = ends[i % arms][Math.min(5, k + (R() < 0.3 ? 1 : 0))]; if (i) x.lineTo(p[0], p[1]); else x.moveTo(p[0], p[1]); } x.stroke(); }
-  x.fillStyle = 'rgba(255,255,255,0.8)'; x.beginPath(); x.arc(S / 2, S / 2, 6, 0, 6.3); x.fill();
+  const S = 256, [c, x] = cv(S, S); x.clearRect(0, 0, S, S); const C = S / 2;
+  const arms = 8 + Math.floor(R() * 4); x.lineWidth = 1; x.lineCap = 'round';
+  for (let i = 0; i < arms; i++) {
+    let a = i / arms * Math.PI * 2 + (R() - 0.5) * 0.4, px = C, py = C, r = 0;
+    const len = (0.35 + R() * 0.65) * C * 0.96;
+    while (r < len) {
+      const step = 8 + R() * 6; a += (R() - 0.5) * 0.7; const nx = px + Math.cos(a) * step, ny = py + Math.sin(a) * step;
+      r = Math.hypot(nx - C, ny - C); x.strokeStyle = `rgba(255,255,255,${(0.9 - 0.55 * Math.min(1, r / len)).toFixed(3)})`;
+      x.beginPath(); x.moveTo(px, py); x.lineTo(nx, ny); x.stroke(); px = nx; py = ny;
+    }
+  }
+  x.strokeStyle = 'rgba(255,255,255,0.5)';
+  for (let k = 0, n = 2 + Math.floor(R() * 3); k < n; k++) { const rr = (0.25 + R() * 0.25) * C, a0 = R() * 6.3; x.beginPath(); x.arc(C, C, rr, a0, a0 + 0.6 + R() * 1.4); x.stroke(); }
+  x.fillStyle = 'rgba(255,255,255,0.95)'; x.beginPath(); x.arc(C, C, 2.5, 0, 6.3); x.fill();
   return tex(c);
 }
 
@@ -339,7 +349,7 @@ export function makeFacadeKit(scene, opts) {
   const kickMat = new THREE.MeshStandardMaterial({ color: 0x23201d, roughness: 0.6, metalness: 0.3 });
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x8aa0b8, metalness: 1.0, roughness: 0.04, envMapIntensity: 1.5, transparent: true, opacity: 0.22, depthWrite: false });
   const remnantMats = [101, 202, 303].map(sd => new THREE.MeshStandardMaterial({ map: remnantTexture(sd), metalness: 0.9, roughness: 0.05, envMapIntensity: 2, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
-  const crackMat = new THREE.MeshBasicMaterial({ map: crackTexture(), transparent: true, opacity: 0.75, depthWrite: false, color: new THREE.Color(1.3, 1.35, 1.45) });
+  const crackMat = new THREE.MeshBasicMaterial({ map: crackTexture(), transparent: true, opacity: 0.8, depthWrite: false, color: new THREE.Color(1.1, 1.15, 1.25) });
   const shutterMat = new THREE.MeshStandardMaterial({ map: shutterTexture(), roughness: 0.55, metalness: 0.6 });
 
   // pane instances: all glass in the city is one InstancedMesh (+ one for jagged remains)
@@ -505,24 +515,33 @@ export function makeFacadeKit(scene, opts) {
   const triGeo = new THREE.BufferGeometry();
   triGeo.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, -0.45, 0, 0.5, -0.3, 0, -0.05, 0.6, 0], 3));
   triGeo.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3));
-  const shardMat = new THREE.MeshStandardMaterial({ color: 0xc8d8e8, metalness: 1, roughness: 0.03, envMapIntensity: 2.6, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+  // glass, not black paper (lighting Fix 10): clear, non-metallic, with a glint that flickers per shard (dimmer at rest)
+  const shardU = { uTime: { value: 0 } };
+  const shardMat = new THREE.MeshStandardMaterial({ color: 0xcfe6ff, metalness: 0, roughness: 0.08, envMapIntensity: 2.0, side: THREE.DoubleSide, transparent: true, opacity: 0.38, depthWrite: false });
+  shardMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = shardU.uTime;
+    sh.vertexShader = 'attribute float aGl; varying float vGl; varying float vSeed;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vGl = aGl; vSeed = float(gl_InstanceID) * 1.618;');
+    sh.fragmentShader = 'uniform float uTime; varying float vGl; varying float vSeed;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { float g = pow(abs(dot(normal, normalize(vec3(0.0, 0.6, 0.8)))), 24.0); totalEmissiveRadiance += vec3(0.85, 0.95, 1.0) * g * 2.2 * (0.6 + 0.4 * sin(uTime * 18.0 + vSeed)) * vGl + vec3(0.09, 0.11, 0.14) * (0.5 + 0.5 * vGl); }`);
+  };
+  const aGl = new THREE.InstancedBufferAttribute(new Float32Array(SH).fill(1), 1); triGeo.setAttribute('aGl', aGl);
   const shardIM = new THREE.InstancedMesh(triGeo, shardMat, SH); shardIM.frustumCulled = false; scene.add(shardIM);
   for (let i = 0; i < SH; i++) shardIM.setMatrixAt(i, Z0);
   const shards = []; let shardNext = 0;
   const E = new THREE.Euler();
   const spawnShard = (p, v, s) => {
     const i = shardNext; shardNext = (shardNext + 1) % SH;
-    shards[i] = { p: p.clone(), v: v.clone(), r: new THREE.Vector3(Math.random() * 6, Math.random() * 6, Math.random() * 6), w: new THREE.Vector3((Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24), s, rest: false, life: 22 + Math.random() * 8, sx: 0.6 + Math.random() * 0.8 };
+    shards[i] = { p: p.clone(), v: v.clone(), r: new THREE.Vector3(Math.random() * 6, Math.random() * 6, Math.random() * 6), w: new THREE.Vector3((Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24), s, rest: false, life: 12, sx: 0.6 + Math.random() * 0.8 }; aGl.setX(i, 1); aGl.needsUpdate = true;
   };
 
   // ---------------- breaking
   const decals = [];
   const crackAt = (P, at) => {
     P.cracks++; P.lastCrack = kit.time;
-    const d = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), crackMat); d.renderOrder = 4;
+    const d = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), crackMat); d.renderOrder = 4;
     const off = at ? at.clone().sub(P.c) : new THREE.Vector3();
     const u = THREE.MathUtils.clamp(off.dot(P.r), -P.w / 2 + 0.3, P.w / 2 - 0.3), y = THREE.MathUtils.clamp(off.y, -P.h / 2 + 0.3, P.h / 2 - 0.3);
-    d.position.copy(P.c).addScaledVector(P.r, u).addScaledVector(P.n, 0.006); d.position.y += y; d.rotation.y = P.ry; d.rotation.z = Math.random() * 6; d.scale.setScalar(0.7 + Math.random() * 0.6);
+    d.position.copy(P.c).addScaledVector(P.r, u).addScaledVector(P.n, 0.006); d.position.y += y; d.rotation.y = P.ry; d.rotation.z = Math.random() * 6; d.scale.setScalar(0.6 + Math.random() * 0.4);
     scene.add(d); decals.push(d); (P.decals = P.decals || []).push(d);
     if (decals.length > 40) { const old = decals.shift(); scene.remove(old); }
     if (kit.sfx && kit.sfx.crack) kit.sfx.crack();
@@ -592,7 +611,7 @@ export function makeFacadeKit(scene, opts) {
   };
 
   kit.update = (dt) => {
-    kit.time += dt;
+    kit.time += dt; shardU.uTime.value = kit.time;
     for (const m of kit.mats) m.uniforms.uTime.value = kit.time;
     let dirty = false;
     for (let i = 0; i < shards.length; i++) {
@@ -603,7 +622,7 @@ export function makeFacadeKit(scene, opts) {
         s.r.x += s.w.x * dt; s.r.y += s.w.y * dt; s.r.z += s.w.z * dt;
         if (s.p.y < 0.012) {
           s.p.y = 0.012; s.v.y *= -0.25; s.v.x *= 0.5; s.v.z *= 0.5; s.w.multiplyScalar(0.4);
-          if (Math.abs(s.v.y) < 0.6) { s.rest = true; s.r.x = -Math.PI / 2 + (Math.random() - 0.5) * 0.15; s.r.y = 0; }
+          if (Math.abs(s.v.y) < 0.6) { s.rest = true; s.r.x = -Math.PI / 2 + (Math.random() - 0.5) * 0.15; s.r.y = 0; aGl.setX(i, 0.35); aGl.needsUpdate = true; }
         }
       }
       s.life -= dt;

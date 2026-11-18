@@ -39,13 +39,17 @@ export function staticBatch(scene, { exclude = new Set(), cell = 48 } = {}) {
   scene.updateMatrixWorld(true);
   const buckets = new Map(), mats = new Map(), victims = [];
   const box = new THREE.Box3(), ctr = new THREE.Vector3();
-  const prep = (geo, mesh, rep, col) => {
+  const prep = (geo, mesh, rep, col, mat) => {
     let g = geo.index ? geo.toNonIndexed() : geo.clone();
     for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') g.deleteAttribute(k);
     { const n = g.attributes.position.count, ca = new Float32Array(n * 3); for (let i = 0; i < n; i++) { ca[i * 3] = col.r; ca[i * 3 + 1] = col.g; ca[i * 3 + 2] = col.b; } g.setAttribute('color', new THREE.BufferAttribute(ca, 3)); }
     if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
     if (rep && (rep.rx !== 1 || rep.ry !== 1 || rep.ox || rep.oy)) { const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * rep.rx + rep.ox, uv.getY(i) * rep.ry + rep.oy); }
     g.applyMatrix4(mesh.matrixWorld); g.groups = []; g.morphAttributes = {};
+    if (mat && mat.userData.falloff) {   // facade height falloff: street-level bright, upper floors dark
+      const P = g.attributes.position, C = g.attributes.color;
+      for (let i = 0; i < P.count; i++) { const t = Math.min(1, Math.max(0, (P.getY(i) - 3.5) / 7.5)), f = 1 - 0.62 * t * t * (3 - 2 * t); C.setXYZ(i, C.getX(i) * f, C.getY(i) * f, C.getZ(i) * f); }
+    }
     return g;
   };
   const cands = [];
@@ -69,9 +73,9 @@ export function staticBatch(scene, { exclude = new Set(), cell = 48 } = {}) {
         const mat = m.material[gr.materialIndex]; if (!mat || mat.visible === false) continue;
         const sub = new THREE.BufferGeometry();
         for (const k of ['position', 'normal', 'uv']) { const a = flat.attributes[k]; if (!a) continue; sub.setAttribute(k, new THREE.BufferAttribute(a.array.slice(gr.start * a.itemSize, (gr.start + gr.count) * a.itemSize), a.itemSize)); }
-        add(mat, prep(sub, m, texOK(mat), mat.color || WHITE));
+        add(mat, prep(sub, m, texOK(mat), mat.color || WHITE, mat));
       }
-    } else add(m.material, prep(geo, m, texOK(m.material), m.material.color || WHITE));
+    } else add(m.material, prep(geo, m, texOK(m.material), m.material.color || WHITE, m.material));
     victims.push(m);
   }
   let made = 0;
