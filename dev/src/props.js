@@ -14,6 +14,9 @@ export const DEFS = {
   crate:   { model: 'crate', mass: 12, hp: 38, shape: 'box', breakable: true, wood: true, label: 'CRATE' },
   barrier: { model: 'barrier', mass: 280, hp: 420, shape: 'box', stone: true, label: 'BARRIER' },
   car:     { model: 'covered_car', mass: 380, hp: 520, shape: 'box', metal: true, label: 'CAR' },
+  // flying traffic pulled out of the sky (templates registered by cyber.js from the fliers themselves)
+  skydrone: { proc: 'ext', mass: 9, hp: 40, shape: 'box', metal: true, label: 'DELIVERY DRONE' },
+  spinner:  { proc: 'ext', mass: 300, hp: 420, shape: 'box', metal: true, label: 'SPINNER' },
   utility: { model: 'utility_box', mass: 85, hp: 180, shape: 'box', metal: true, label: 'UTILITY BOX' },
   bag:     { model: 'trashbag', mass: 5, hp: 14, shape: 'box', soft: true, label: 'TRASH BAG' },
   box:     { model: 'cardboard', mass: 3, hp: 10, shape: 'box', soft: true, label: 'BOX' },
@@ -26,6 +29,16 @@ export const DEFS = {
 };
 
 const TEMPLATES = {};
+export function registerTemplate(type, src) {
+  const g = new THREE.Group();
+  src.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(src.matrixWorld).invert();
+  src.traverse(o => { if (!o.isMesh) return; const m = new THREE.Mesh(o.geometry, o.material); m.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld)); m.castShadow = true; g.add(m); });
+  const box = new THREE.Box3().setFromObject(g), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  for (const m of g.children) m.position.sub(c);
+  TEMPLATES[type] = { g, size };
+}
+
 function template(type) {
   if (TEMPLATES[type]) return TEMPLATES[type];
   const def = DEFS[type];
@@ -92,7 +105,7 @@ export function makeProp(type, x, z, rotY = 0, y = null, chunkOf = null) {
       o.material.userData.baseEmissive = (o.material.emissive || new THREE.Color()).clone();
       o.material.userData.baseEI = o.material.emissiveIntensity ?? 1;
       o.material.envMapIntensity = 0.8;
-      glowMats.push(o.material);
+      if (o.material.emissive) glowMats.push(o.material);     // unlit parts (LEDs on pulled-down fliers) don't take a glow
     }
   });
   const hh = size.y / 2;

@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ZONES } from './level.js';
 import * as CANNON from 'cannon-es';
 import { G, GRP, ALL } from './state.js';
+import { registerTemplate } from './props.js';
 
 const CYAN = new THREE.Color(0x19d3e6), PINK = new THREE.Color(0xff2e7a), AMBER = new THREE.Color(0xff9a1f), CIVIC = new THREE.Color(0xbff6ff), VIOLET = new THREE.Color(0x9b7bff);
 const CENSUS_ZONES = new Set([1, 6]);          // checkpoint plaza, rail yard: Census ground
@@ -55,7 +56,7 @@ const adRect = (i) => new THREE.Vector4((i % 4) * 0.25, 1 - (512 + Math.floor(i 
 
 // ------------------------------------------------------------------ TAG atlas: 8 x 8 slots of 128 x 32, white on clear (tinted per instance)
 const TAG = { norec: 29, census: { counter: 0, marksman: 1, lobber: 2, warden: 3, clerk: 4, auditor: 5, lamplighter: 6, informant: 11 }, null: 8, nullName: 9, out: 10, civ: 12, halden: 19, locked: 20, obj: 21 };
-const PROP_SLOT = { trash: 21, trashR: 21, barrel: 22, drum: 22, crate: 23, box: 23, barrier: 24, car: 25, utility: 25, bag: 26, fire: 26, container: 27, chunk: 28, wallslab: 28, riotshield: 24, cagedoor: 24 };
+const PROP_SLOT = { trash: 21, trashR: 21, barrel: 22, drum: 22, crate: 23, box: 23, barrier: 24, car: 25, utility: 25, bag: 26, fire: 26, container: 27, spinner: 25, skydrone: 26, chunk: 28, wallslab: 28, riotshield: 24, cagedoor: 24 };
 function buildTagAtlas() {
   const c = document.createElement('canvas'); c.width = 1024; c.height = 256; const x = c.getContext('2d');
   const slot = (i, draw) => { x.save(); x.translate((i % 8) * 128, Math.floor(i / 8) * 32); x.beginPath(); x.rect(0, 0, 128, 32); x.clip(); draw(); x.restore(); };
@@ -822,6 +823,8 @@ export function makeCyber(scene, level, wet, world) {
       const rings = []; for (let k = 0; k < (big ? 3 : 2); k++) { const r = new THREE.Mesh(ringGeo, washMat.clone()); r.visible = false; scene.add(r); wet.hide.push(r); rings.push(r); }
       Object.assign(g.userData, { shadow: sh, beam, rings, big });
     };
+    // the liftable versions are the fliers themselves: she can pull either out of the sky
+    registerTemplate('skydrone', mkDrone(CYAN)); { const t = mkSpinner(false); scene.remove(t.userData.pool); registerTemplate('spinner', t); }
     for (let i = 0; i < 3; i++) { const d = mkDrone(i % 2 ? PINK : CYAN); addAir(d, 'drone', i % 2 ? PINK : CYAN); d.visible = false; scene.add(d); fliers.push({ o: d, on: false, t: 0, v: new THREE.Vector3(), cd: R() * 3 }); }
     for (let i = 0; i < 2; i++) { const s = mkSpinner(false); addAir(s, 'spinner', CYAN); s.visible = false; s.userData.pool.visible = false; scene.add(s); fliers.push({ o: s, on: false, t: 0, v: new THREE.Vector3(), cd: 4 + R() * 6 }); }
   }
@@ -862,6 +865,12 @@ export function makeCyber(scene, level, wet, world) {
     }
   };
 
+  // she pulls one down: the flier leaves the sky and a real, liftable copy takes its place where it was
+  C.pluck = (f) => {
+    const o = f.o, u = o.userData;
+    f.on = false; o.visible = false; showAir(u, false); f.cd = 6 + Math.random() * 6;
+    return { type: u.kind === 'drone' ? 'skydrone' : 'spinner', x: o.position.x, y: o.position.y, z: o.position.z, rotY: o.rotation.y, vx: f.v.x, vz: f.v.z };
+  };
   C.fliers = fliers; C.fly = (i) => { const f = fliers[i]; if (f && !f.on) f.cd = 0; };
   C.update = (dt, center, hero) => {
     const t = G.rt || 0;

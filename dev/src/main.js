@@ -675,6 +675,28 @@ const api = {
     }
     if (G.holds.size >= 2) return false;
     const hp = heroCenter();
+    // traffic overhead: touch a drone or a spinner and she drags it out of the sky
+    if (cyber && cyber.fliers) {
+      let bf = null, bs = 1e9;
+      for (const f of cyber.fliers) {
+        if (!f.on) continue; const p = f.o.position;
+        if (Math.hypot(p.x - hp.x, p.z - hp.z) > TUNE.GRAB_RANGE * stat.reach() + 6) continue;
+        toScreen(p, _sp); if (_sp.z > 1) continue;
+        const allow = (f.o.userData.kind === 'spinner' ? 2.2 : 0.7) * pxPerMeter(p) + 28, d = Math.hypot(_sp.x - x, _sp.y - y);
+        if (d < allow && d / allow < bs) { bs = d / allow; bf = f; }
+      }
+      if (bf) {
+        const cost = liftCost({ kind: 'prop', mass: DEFS[bf.o.userData.kind === 'drone' ? 'skydrone' : 'spinner'].mass });
+        if (hero.focus < Math.max(4, cost * 0.6)) { num(_v2.set(hp.x, hp.y + 1.6, hp.z), 'NO FOCUS', 'psi', 0.8); return false; }
+        const s = cyber.pluck(bf), o = makeProp(s.type, s.x, s.z, s.rotY, s.y);
+        o.body.velocity.set(s.vx * 0.6, 0, s.vz * 0.6);
+        hero.focus -= cost; hero.focusDelay = 0.6;
+        startHold(id, o, x, y);
+        num(_v2.set(s.x, s.y + 0.8, s.z), s.type === 'spinner' ? 'PULLED DOWN' : 'GOT IT', 'psi', 0.9);
+        addTrauma(s.type === 'spinner' ? 0.35 : 0.1);
+        return true;
+      }
+    }
     let best = null, bestScore = 1e9;
     for (const o of grabbables()) {
       const p = o.body.position;
@@ -2722,6 +2744,7 @@ window.__dbg = {
   ending: () => startEnding(),
   surge: () => { unlockPower('surge', true); doSurge(); }, ult: () => { unlockPower('root', true); G.ult = 100; startUlt(); },
   unlock: (k) => unlockPower(k),
+  grabFlier: (i) => { const f = cyber.fliers[i]; if (!f || !f.on) return null; toScreen(f.o.position, _sp); return api.tryGrab(77, _sp.x, _sp.y); },
   grabProp: (type) => { const hp = hero.body.position; let best = null, bd = 1e9; for (const o of G.props) { if (!o.alive || o.held || (type && o.type !== type)) continue; const d = Math.hypot(o.body.position.x - hp.x, o.body.position.z - hp.z); if (d < bd) { bd = d; best = o; } } if (!best) return null; startHold(77, best, G.W / 2, G.H / 2); return [best.type, Math.round(bd * 10) / 10]; },
   grabEnemy: () => { const e = G.enemies.find(e => !e.dead && e.def.grip && e.state !== 'spawn'); if (!e) return false; startHold(77, e, G.W / 2, G.H / 2); return true; },
   release: (vx, vy) => { const h = G.holds.get(77); if (!h) return false; endHold(h); if (vx) throwObj(h.obj, G.W / 2, G.H / 2, vx, vy, Math.hypot(vx, vy)); else dropObj(h.obj); return true; },

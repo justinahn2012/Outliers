@@ -86,7 +86,7 @@ function voxelize(root) {
     let i = 0;
     for (const a of acc.values()) {
       P[i * 3] = box.min.x + (a[4] + 0.5) * cell; P[i * 3 + 1] = box.min.y + (a[5] + 0.5) * cell; P[i * 3 + 2] = box.min.z + (a[6] + 0.5) * cell;
-      Cl[i * 3] = a[0] / a[3]; Cl[i * 3 + 1] = a[1] / a[3]; Cl[i * 3 + 2] = a[2] / a[3]; i++;
+      Cl[i * 3] = Math.min(0.6, a[0] / a[3]); Cl[i * 3 + 1] = Math.min(0.6, a[1] / a[3]); Cl[i * 3 + 2] = Math.min(0.6, a[2] / a[3]); i++;   // lamps glow, never blow out
     }
     const Mt = new Float32Array(n * 16), m4 = new THREE.Matrix4();
     for (let j = 0; j < n; j++) { m4.makeScale(cell * 0.84, cell * 0.84, cell * 0.84).setPosition(P[j * 3], P[j * 3 + 1], P[j * 3 + 2]); m4.toArray(Mt, j * 16); }
@@ -98,19 +98,51 @@ function voxelize(root) {
 // ---------------------------------------------------------------- the light-cube material
 const VS = `
 uniform float uTime; uniform float uIn; uniform float uOut; uniform float uMinY; uniform float uMaxY; uniform float uCell;
+uniform vec4 uRipA; uniform vec4 uRipB;                  // ripples: origin (object space) + start time
+uniform vec3 uSelMin; uniform vec3 uSelMax; uniform float uSelA;   // the current selection box and its fade
+uniform vec4 uSweep; uniform float uSweepT;              // a scan line crossing it: xyz = direction, w = half-extent along it
 attribute vec3 aCol; attribute float aRnd;
 varying vec3 vCol; varying vec3 vP; varying vec3 vN; varying float vY; varying float vFront; varying float vOutF; varying float vRnd;
+varying vec4 vFx; varying float vLine;
 float hs(float n){ return fract(sin(n) * 43758.5453); }
+float ripple(vec4 R, vec3 c){
+  float age = uTime - R.w; if (age < 0.0 || age > 1.5) return 0.0;
+  float front = age * 2.8, d = distance(c, R.xyz);
+  return (1.0 - smoothstep(0.0, uCell * 0.9, abs(d - front))) * (1.0 - age / 1.5);
+}
 void main(){
   vec3 c = instanceMatrix[3].xyz;
   float yN = (c.y - uMinY) / max(0.001, uMaxY - uMinY);
   float show = step(yN, uIn) * step(uOut, yN);                     // between the out line and the in line
-  float blink = step(0.985, hs(aRnd * 91.0 + floor(uTime * 8.0))); // ~1.5% of cubes drop a frame at a time
+  float blink = step(0.988, hs(aRnd * 91.0 + floor(uTime * 8.0))); // ~1% of cubes drop a frame at a time
+
+  // ripples: rings of light that roll through the cubes and lift them as they pass
+  float rip = max(ripple(uRipA, c), ripple(uRipB, c));
+  // selection: a box of cubes gets picked out, its shell drawn as a marquee with crawling dashes
+  vec3 lo = step(uSelMin, c), hi = step(c, uSelMax);
+  float inSel = lo.x * lo.y * lo.z * hi.x * hi.y * hi.z;
+  vec3 de = min(c - uSelMin, uSelMax - c);
+  float shell = inSel * (1.0 - step(uCell * 0.75, min(de.x, min(de.y, de.z))));
+  float ants = step(0.5, fract((c.x + c.y + c.z) / uCell * 0.5 - uTime * 3.0));
+  // twinkles: single cubes flare and fade at random
+  float per = 0.55 + hs(aRnd * 5.0) * 0.9, cyc = uTime / per + hs(aRnd * 11.0);
+  float tw = step(0.93, hs(aRnd * 19.0 + floor(cyc))) * pow(1.0 - fract(cyc), 3.0);
+  // data streams: a few columns carry light upward through it
+  vec2 colId = floor(c.xz / uCell + 0.5); float ch = hs(colId.x * 12.9898 + colId.y * 78.233);
+  float stream = step(0.86, ch) * (1.0 - smoothstep(0.0, 0.13, abs(fract(uTime * (0.7 + ch * 0.8) + ch * 7.0) - yN)));
+  // scan line: a flat band sweeping across it
+  float sweepK = uTime - uSweepT;
+  float along = dot(c, uSweep.xyz) / max(0.001, uSweep.w);
+  float line = sweepK < 0.7 ? (1.0 - smoothstep(0.0, 0.12, abs(along - mix(-1.1, 1.1, sweepK / 0.7)))) : 0.0;
+
   float breathe = 1.0 + 0.05 * sin(uTime * 6.0 + aRnd * 40.0);
-  float s = show * (1.0 - blink) * breathe;
-  vec3 jit = (vec3(hs(aRnd * 7.0 + floor(uTime * 12.0)), hs(aRnd * 13.0 + floor(uTime * 12.0)), hs(aRnd * 17.0 + floor(uTime * 12.0))) - 0.5) * uCell * 0.5 * step(0.96, hs(aRnd * 3.0 + floor(uTime * 3.0)));
-  vec3 p = c + jit + (mat3(instanceMatrix) * position) * s;
+  float s = show * (1.0 - blink) * breathe * (1.0 + rip * 0.28 + tw * 0.25 + inSel * uSelA * 0.08);
+  vec3 jit = (vec3(hs(aRnd * 7.0 + floor(uTime * 12.0)), hs(aRnd * 13.0 + floor(uTime * 12.0)), hs(aRnd * 17.0 + floor(uTime * 12.0))) - 0.5) * uCell * 0.5 * step(0.97, hs(aRnd * 3.0 + floor(uTime * 3.0)));
+  vec3 out_ = normalize(vec3(c.x, 0.0, c.z) + vec3(0.0001));
+  vec3 p = c + jit + out_ * rip * uCell * 0.35 + (mat3(instanceMatrix) * position) * s;
   vP = position; vN = normal; vCol = aCol; vY = yN; vRnd = aRnd;
+  vFx = vec4(rip, inSel * uSelA, shell * uSelA * (0.45 + 0.55 * ants), tw + stream);
+  vLine = line;
   vFront = (1.0 - smoothstep(0.0, 0.14, abs(yN - uIn))) * step(uIn, 0.999);      // only while the sweep is running: from above you mostly see the top layer
   vOutF = (1.0 - smoothstep(0.0, 0.14, abs(yN - uOut))) * step(0.001, uOut) * step(uOut, 0.999);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
@@ -118,6 +150,7 @@ void main(){
 const FS = `
 uniform float uTime; uniform float uOut; uniform float uFade;
 varying vec3 vCol; varying vec3 vP; varying vec3 vN; varying float vY; varying float vFront; varying float vOutF; varying float vRnd;
+varying vec4 vFx; varying float vLine;
 void main(){
   vec3 a = abs(vP);
   float mx = max(a.x, max(a.y, a.z)), mn = min(a.x, min(a.y, a.z)), mid = a.x + a.y + a.z - mx - mn;
@@ -127,18 +160,25 @@ void main(){
   // the object's colour, lifted so it reads as light, never as a dark lump
   vec3 body = vCol * 1.3 + vio * 0.06 + 0.008;
   body *= 0.5 + 0.5 * max(vN.y, 0.0) + 0.14 * abs(vN.x);          // lit top, darker flanks: the form still reads as a solid
-  float pulse = smoothstep(0.09, 0.0, abs(fract(uTime * 0.9 + 0.13) - vY));    // a data pulse climbing through it
-  float spark = step(0.985, fract(sin(vRnd * 77.0 + floor(uTime * 10.0)) * 43758.5453));
-  vec3 col = mix(body, vec3(0.42, 0.24, 1.0) * 0.85, edge * 0.9) + vec3(0.6, 0.5, 1.0) * (pulse * 0.35 + spark * 0.8) * (0.25 + 0.75 * edge);
-  col += vec3(0.8, 0.7, 1.0) * vFront * 1.2;                     // her scan line on the way in
-  col += vec3(1.0, 0.6, 0.12) * vOutF * 2.2;   // the city's re-render line on the way out
+  float pulse = 1.0 - smoothstep(0.0, 0.09, abs(fract(uTime * 0.9 + 0.13) - vY));   // a data pulse climbing through it
+  vec3 col = mix(body, vec3(0.42, 0.24, 1.0) * 0.85, edge * 0.9) + vec3(0.6, 0.5, 1.0) * pulse * 0.3 * (0.25 + 0.75 * edge);
+  vec3 hot = vec3(0.82, 0.72, 1.0);
+  col += hot * vFx.x * (0.22 + 0.75 * edge);                        // ripple rolling through
+  col = mix(col, col * 1.25 + vio * 0.12, vFx.y);                   // selected cubes lift
+  col += vec3(0.95, 0.9, 1.0) * vFx.z * (0.25 + 0.9 * edge);        // the selection's marquee
+  col += hot * min(1.0, vFx.w) * (0.35 + 0.65 * edge);              // twinkles and data streams
+  col += vec3(0.7, 0.85, 1.0) * vLine * (0.25 + 0.7 * edge);        // the scan line
+  col += vec3(0.8, 0.7, 1.0) * vFront * 1.2;                        // her scan line on the way in
+  col += vec3(1.0, 0.6, 0.12) * vOutF * 2.2;                        // the city's re-render line on the way out
   gl_FragColor = vec4(col * uFade, 1.0);
 }`;
 
 export function makeDigitizer(scene) {
   const cache = new Map();
   const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
-  const baseMat = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uIn: { value: 0 }, uOut: { value: 0 }, uMinY: { value: 0 }, uMaxY: { value: 1 }, uCell: { value: 0.2 }, uFade: { value: 1 } }, vertexShader: VS, fragmentShader: FS });
+  const baseMat = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uIn: { value: 0 }, uOut: { value: 0 }, uMinY: { value: 0 }, uMaxY: { value: 1 }, uCell: { value: 0.2 }, uFade: { value: 1 },
+    uRipA: { value: new THREE.Vector4(0, 0, 0, -9) }, uRipB: { value: new THREE.Vector4(0, 0, 0, -9) }, uSelMin: { value: new THREE.Vector3() }, uSelMax: { value: new THREE.Vector3() }, uSelA: { value: 0 },
+    uSweep: { value: new THREE.Vector4(1, 0, 0, 1) }, uSweepT: { value: -9 } }, vertexShader: VS, fragmentShader: FS });
   const live = new Map();   // prop -> state
   const stats = { ms: 0 };
 
@@ -177,7 +217,10 @@ export function makeDigitizer(scene) {
     im.instanceMatrix.array.set(d.Mt);
     im.userData.vox = true; im.castShadow = false; im.frustumCulled = false;
     o.mesh.add(im);
-    return { im, mat, d, phase: 'in', t: 0, shedAcc: 0 };
+    const top = d.P.reduce((b, v, i) => (i % 3 === 1 && v > b.y ? { y: v, i: (i - 1) / 3 } : b), { y: -1e9, i: 0 });
+    mat.uniforms.uRipA.value.set(d.P[top.i * 3], d.P[top.i * 3 + 1], d.P[top.i * 3 + 2], G.rt || 0);   // her touch lands on top and rolls through it
+    let ext = 0; for (let i = 0; i < d.n; i++) ext = Math.max(ext, Math.abs(d.P[i * 3]), Math.abs(d.P[i * 3 + 2]));
+    return { im, mat, d, phase: 'in', t: 0, shedAcc: 0, ripT: 0.7, ripFlip: false, selT: 0.25, selAge: 0, selLife: 0.5, sweepT: 0.9, ext };
   }
   function drop(o, st) { o.mesh.remove(st.im); st.im.geometry.dispose(); st.mat.dispose(); live.delete(o); }
 
@@ -215,6 +258,25 @@ export function makeDigitizer(scene) {
       } else if (st.phase === 'out') {
         u.uOut.value = Math.min(1.001, st.t / 0.24);
         if (st.t >= 0.26) { drop(o, st); continue; }
+      }
+      // ripples, selections and scan lines, on their own clocks
+      if (st.phase !== 'out') {
+        const d = st.d, P2 = d.P;
+        st.ripT -= dt; if (st.ripT <= 0) {
+          st.ripT = 0.7 + Math.random() * 0.6; st.ripFlip = !st.ripFlip; const i = Math.floor(Math.random() * d.n);
+          (st.ripFlip ? u.uRipB : u.uRipA).value.set(P2[i * 3], P2[i * 3 + 1], P2[i * 3 + 2], t);
+        }
+        st.selT -= dt; st.selAge += dt;
+        if (st.selT <= 0) {
+          st.selLife = 0.4 + Math.random() * 0.45; st.selT = st.selLife + Math.random() * 0.25; st.selAge = 0;
+          const i = Math.floor(Math.random() * d.n), c = d.cell, hx = c * (1 + Math.floor(Math.random() * 3)) + 0.01, hy = c * (1 + Math.floor(Math.random() * 3)) + 0.01, hz = c * (1 + Math.floor(Math.random() * 3)) + 0.01;
+          u.uSelMin.value.set(P2[i * 3] - hx, P2[i * 3 + 1] - hy, P2[i * 3 + 2] - hz); u.uSelMax.value.set(P2[i * 3] + hx, P2[i * 3 + 1] + hy, P2[i * 3 + 2] + hz);
+        }
+        u.uSelA.value = st.selAge < 0.06 ? st.selAge / 0.06 : Math.max(0, 1 - Math.max(0, st.selAge - st.selLife * 0.6) / (st.selLife * 0.4));
+        st.sweepT -= dt; if (st.sweepT <= 0) {
+          st.sweepT = 1.4 + Math.random() * 1.2; const a = Math.random() * Math.PI * 2;
+          u.uSweep.value.set(Math.cos(a), 0, Math.sin(a), st.ext + d.cell); u.uSweepT.value = t;
+        }
       }
       // shed: a few loose cubes a second while held, more in flight
       if (st.phase !== 'out') {
