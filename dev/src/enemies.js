@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { G, GRP, ALL, clamp, damp, rand } from './state.js';
 import { makeCharacter, findBone, blobShadow, addRim } from './assets.js';
+import { makeShieldVisual } from './shield.js';
 import { aimArm, twoBoneIK, blendLocomotion, softTex } from './hero.js';
 
 // The Census: tactical "Counters" in black kit, visor-helmeted Marksmen, Lobbers with grenade packs,
@@ -72,12 +73,9 @@ let spotTex = null;
 function spotTexture() {
   if (spotTex) return spotTex;
   const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
-  const gr = x.createRadialGradient(64, 64, 4, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.7, 'rgba(255,255,255,0.45)'); gr.addColorStop(0.92, 'rgba(255,255,255,0.8)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  const gr = x.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,0.10)'); gr.addColorStop(0.8, 'rgba(255,255,255,0.16)'); gr.addColorStop(0.9, 'rgba(255,255,255,0.95)'); gr.addColorStop(0.96, 'rgba(255,255,255,0.95)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
   x.fillStyle = gr; x.fillRect(0, 0, 128, 128); return (spotTex = new THREE.CanvasTexture(c));
 }
-const shieldGeo = new THREE.BoxGeometry(0.82, 1.3, 0.07);
-const shieldMat = new THREE.MeshStandardMaterial({ color: 0x1a2028, metalness: 0.3, roughness: 0.12, transparent: true, opacity: 0.82, envMapIntensity: 1.5 });
-const shieldStripe = new THREE.MeshStandardMaterial({ color: 0x221000, emissive: 0xff8a20, emissiveIntensity: 1.3 });
 
 let ringTex = null;
 // ring colour says what it is from above: brawler red, rifle amber, grenades green, shield steel, runner white, heavy crimson
@@ -194,10 +192,7 @@ export function spawnEnemy(type, x, z) {
   body.userData = e;
   model.scale.setScalar(0.01);
   if (def.shield) {
-    const sh = new THREE.Group(); const p = new THREE.Mesh(shieldGeo, shieldMat); p.castShadow = true; sh.add(p);
-    const st = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.1, 0.075), shieldStripe); st.position.y = 0.42; sh.add(st);
-    // a strap and a grip on the inside face, so the hand visibly holds it
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.05), shieldStripe.clone()); grip.material.emissiveIntensity = 0.15; grip.material.color.set(0x111111); grip.position.set(0, 0, -0.06); sh.add(grip);
+    const sh = makeShieldVisual();       // curved glass, cyan top edge, CENSUS stencil (shield.js)
     root.add(sh); e.shield = sh; e.shieldUp = true;
   }
   G.enemies.push(e);
@@ -214,14 +209,23 @@ function spawnDrone(type, def, x, z) {
   const hb = bar(); root.add(hb.bg); root.add(hb.fg);
   const s = def.drone === 'lamp' ? 2.6 : 1;
   const ring = threatRing(def.drone === 'lamp' ? 2.4 : 0.8, type); G.scene.add(ring);
-  const blob = blobShadow(def.drone === 'lamp' ? 3 : 0.9); G.scene.add(blob);
+  const blob = blobShadow(def.drone === 'lamp' ? 3 : 1.1); G.scene.add(blob);
   const body = new CANNON.Body({ mass: def.mass, material: G.charMat, fixedRotation: true, linearDamping: 0.2, angularDamping: 0.4, collisionFilterGroup: GRP.ENEMY, collisionFilterMask: ALL, allowSleep: false });
   body.addShape(new CANNON.Sphere(def.drone === 'lamp' ? 1.35 : 0.36));
   body.position.set(x, def.hover, z); G.world.addBody(body);
   const gear = {};
+  if (def.drone !== 'lamp') {
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 1, 4, 1, true), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.3, 0.75, 0.2), transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    G.scene.add(t); gear.tether = t;
+  }
   if (def.drone === 'lamp') {
-    const spot = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: spotTexture(), color: new THREE.Color(1.6, 1.7, 1.9), transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    const spot = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: spotTexture(), color: new THREE.Color(0.95, 1.0, 1.1), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     spot.rotation.x = -Math.PI / 2; spot.renderOrder = 6; G.scene.add(spot); gear.spot = spot;
+    // how far the count has got: an amber arc filling round the rim of the light
+    const arc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({ uniforms: { uProg: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+      vertexShader: 'varying vec2 vP; void main(){ vP = uv * 2.0 - 1.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform float uProg; varying vec2 vP; void main(){ float r = length(vP); float a = atan(vP.y, vP.x) / 6.2832 + 0.5; float k = smoothstep(0.88, 0.9, r) * (1.0 - smoothstep(0.97, 0.99, r)) * step(a, uProg); gl_FragColor = vec4(vec3(2.4, 1.2, 0.3) * k, 1.0); }' }));
+    arc.rotation.x = -Math.PI / 2; arc.renderOrder = 7; G.scene.add(arc); gear.arc = arc;
     const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 1, 1, 24, 1, true), new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
       uniforms: { uCol: { value: new THREE.Color(0.8, 0.85, 1.0) } },
@@ -492,13 +496,18 @@ function updateDroneVisual(e, dt) {
     e.hb.bg.scale.set(w, big ? 0.16 : 0.08, 1); e.hb.fg.scale.set(w * k, big ? 0.16 : 0.08, 1);
   }
   e.ring.position.set(b.position.x, 0.025, b.position.z); e.ring.material.opacity = e.dead ? 0 : 0.5 * e.fade; e.ring.visible = !big;
-  e.blob.position.set(b.position.x, 0.02, b.position.z); e.blob.material.opacity = 0.5 * e.fade;
+  e.blob.position.set(b.position.x, 0.02, b.position.z); e.blob.material.opacity = (big ? 0.5 : 0.75) * e.fade;
+  if (e.gear.tether) {        // whose ring is that: a thin line from the hull down to it
+    const h = Math.max(0.1, b.position.y - 0.25); e.gear.tether.position.set(b.position.x, h / 2, b.position.z); e.gear.tether.scale.set(1, h, 1);
+    e.gear.tether.visible = !e.dead && e.state !== 'spawn';
+  }
   if (big && e.gear.spot) {
     const sp = e.spotP, R = e.spotR || 2.6;
     e.gear.spot.position.set(sp.x, 0.05, sp.z); e.gear.spot.scale.setScalar(R * 2);
     const hot = e.countT > 0 ? Math.min(1, e.countT / 1.4) : 0;
     e.gear.spot.material.color.setRGB(0.95 + hot * 1.4, 1.0 - hot * 0.7, 1.15 - hot * 0.95);
     e.gear.spot.visible = e.gear.cone.visible = !e.dead && e.state !== 'spawn';
+    if (e.gear.arc) { e.gear.arc.position.set(sp.x, 0.06, sp.z); e.gear.arc.scale.setScalar(R * 2); e.gear.arc.material.uniforms.uProg.value = hot; e.gear.arc.visible = e.gear.spot.visible && hot > 0; }
     const top = new THREE.Vector3(b.position.x, b.position.y - 0.6, b.position.z), bot = new THREE.Vector3(sp.x, 0, sp.z);
     const len = top.distanceTo(bot);
     e.gear.cone.position.copy(top).lerp(bot, 0.5); e.gear.cone.scale.set(R, len, R);

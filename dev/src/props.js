@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGroupByMaterial } from './batch.js';
+import { makeShieldVisual, SHIELD_SIZE } from './shield.js';
 import * as CANNON from 'cannon-es';
 import { G, GRP, ALL, clamp, rand } from './state.js';
 import { A } from './assets.js';
@@ -54,11 +55,8 @@ function template(type) {
     mergeGroupByMaterial(g); return (TEMPLATES[type] = { g, size: new THREE.Vector3(2.2, 2.4, 0.14) });
   }
   if (def.proc === 'riotshield') {
-    const g = new THREE.Group();
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.3, 0.07), new THREE.MeshStandardMaterial({ color: 0x1a2028, metalness: 0.3, roughness: 0.15, transparent: true, opacity: 0.85 }));
-    const st = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.1, 0.075), new THREE.MeshStandardMaterial({ color: 0x221000, emissive: 0xff8a20, emissiveIntensity: 1.2 }));
-    st.position.y = 0.42; m.castShadow = true; g.add(m); g.add(st);
-    return (TEMPLATES[type] = { g, size: new THREE.Vector3(0.8, 1.3, 0.08) });
+    const g = makeShieldVisual(); g.children.forEach(c => c.position.z += 0.05);   // the Warden's shield, same visuals
+    return (TEMPLATES[type] = { g, size: SHIELD_SIZE.clone() });
   }
   if (def.proc === 'container') {
     const g = new THREE.Group();

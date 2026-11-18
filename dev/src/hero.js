@@ -19,7 +19,30 @@ export function createHero() {
     lU: findBone(B, 'Bip01_L_UpperArm'), lF: findBone(B, 'Bip01_L_Forearm'), lH: findBone(B, 'Bip01_L_Hand'),
   };
   // hair material: a little emissive lift so the silver reads at night
-  for (const m of c.mats) if (m.alphaTest > 0 || /opacity/.test(m.name)) { m.color.setRGB(0.78, 0.82, 0.95); m.emissive = new THREE.Color(0x8a90b0); m.emissiveIntensity = 0.06; }
+  for (const m of c.mats) if (m.alphaTest > 0 || /opacity/.test(m.name)) {
+    m.color.setRGB(0.95, 0.96, 1.0); m.emissive = new THREE.Color(0x8e7cff); m.emissiveIntensity = 0.12;
+    // silver, not peach: recolour every hair pixel from its luminance (the brightest thing on her from above)
+    if (m.map && m.map.image) try {
+      const img = m.map.image, cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
+      const x = cv.getContext('2d'); x.drawImage(img, 0, 0); const d = x.getImageData(0, 0, cv.width, cv.height), a = d.data;
+      for (let i = 0; i < a.length; i += 4) { if (a[i + 3] < 13) continue; const L = (0.3 * a[i] + 0.59 * a[i + 1] + 0.11 * a[i + 2]) / 255, v = Math.min(1, 0.3 + L * 0.85) * 255; a[i] = v * 0.9; a[i + 1] = v * 0.92; a[i + 2] = v; }
+      x.putImageData(d, 0, 0);
+      const t = new THREE.CanvasTexture(cv); t.flipY = m.map.flipY; t.colorSpace = m.map.colorSpace; t.wrapS = m.map.wrapS; t.wrapT = m.map.wrapT; m.map = t; m.needsUpdate = true;
+    } catch (err) { /* keep it */ }
+  }
+  // colour-block her for the camera that mostly sees her back (characters.md Fix 4): a violet shoulder yoke
+  for (const m of c.mats) if (!(m.alphaTest > 0) && /body/.test(m.name) && m.map && m.map.image) {
+    try {
+      const img = m.map.image, W = img.width, Hh = img.height, cv = document.createElement('canvas'); cv.width = W; cv.height = Hh;
+      const x = cv.getContext('2d'); x.drawImage(img, 0, 0);
+      const x0 = Math.round(0.33 * W), x1 = Math.round(0.67 * W), y0 = Math.round(0.83 * Hh), y1 = Math.round(0.99 * Hh);
+      const d = x.getImageData(x0, y0, x1 - x0, y1 - y0), a = d.data;
+      for (let i = 0; i < a.length; i += 4) { const L = (0.3 * a[i] + 0.59 * a[i + 1] + 0.11 * a[i + 2]) * 1.6; a[i] = Math.min(255, L * 0.55); a[i + 1] = Math.min(255, L * 0.36); a[i + 2] = Math.min(255, L); }
+      x.putImageData(d, x0, y0);
+      const t = new THREE.CanvasTexture(cv); t.flipY = m.map.flipY; t.colorSpace = m.map.colorSpace; t.wrapS = m.map.wrapS; t.wrapT = m.map.wrapT; t.anisotropy = 4;
+      m.map = t; m.needsUpdate = true;
+    } catch (err) { /* keep the original texture */ }
+  }
   // her signature: a violet edge, so she reads at a glance against black-clad Census
   for (const m of c.mats) if (!(m.alphaTest > 0)) addRim(m, 0x9b6bff, 0.6, 0.72);
 

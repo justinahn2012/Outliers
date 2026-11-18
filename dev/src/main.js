@@ -15,6 +15,7 @@ import { makeCyber } from './cyber.js';
 import { makeDigitizer } from './digitize.js';
 import { staticBatch, mergeGroupByMaterial } from './batch.js';
 import { makeTrails } from './trails.js';
+import { makeTally } from './tally.js';
 import { makeProp, removeProp, setGlow, applyDamageLook, populateZone, DEFS } from './props.js';
 import { createHero, updateHeroVisual, blendLocomotion } from './hero.js';
 import { spawnEnemy, removeEnemy, updateEnemyVisual, setRagdoll, setEnemyGlow, ETYPES } from './enemies.js';
@@ -185,6 +186,7 @@ async function boot() {
   cyber = makeCyber(scene, level, wet, world); G.cyber = cyber;
   G.digit = makeDigitizer(scene);
   G.trails = makeTrails(scene);
+  G.tally = makeTally(scene);
   { // fold the static city into a few big meshes per 32 m cell (draw calls are the phone's bottleneck)
     const nb = new Set([...wet.hide, ...(level.noBatch || [])]); for (const F of level.fades) for (const o of F.objs) nb.add(o);
     G.batchStats = staticBatch(scene, { exclude: nb });
@@ -430,7 +432,7 @@ function kill(e, dir, force) {
     FX.explosion(_v2.set(p.x, p.y, p.z), big ? 4 : 1.2); sfx.explosion(); addTrauma(big ? 0.9 : 0.2);
     for (let k = 0; k < (big ? 90 : 14); k++) Powers.voxels.emit(p.x, p.y, p.z, rand(-6, 6), rand(0, 6), rand(-6, 6), rand(0.08, 0.2), rand(0.6, 1.2), 2.4, 1.2, 0.3, 9);
     if (big) { num(_v2.set(p.x, p.y + 1, p.z), 'LIGHTS OUT', 'psi', 1.6); hitStop(0.12); screenFlash(0.3); G.glitch = 1; }
-    if (e.gear.spot) { e.gear.spot.visible = false; e.gear.cone.visible = false; }
+    if (e.gear.spot) { e.gear.spot.visible = false; e.gear.cone.visible = false; if (e.gear.arc) e.gear.arc.visible = false; }
   }
   if (e.type === 'informant' && G.chase && G.chase.e === e) chaseCaught();
   if (e.state !== 'ragdoll' && e.state !== 'gripped') knockdown(e, dir || new THREE.Vector3(0, 0, -1), Math.max(force, 6));
@@ -2795,6 +2797,7 @@ function renderFrame(dt, rdt) {
   if (cyber) safe(() => cyber.update(rdt, camState.look, heroCenter()));
   if (G.digit) safe(() => G.digit.update(rdt, G.props));
   if (G.trails) safe(() => G.trails.update(G.bolts, G.props));
+  if (G.tally) safe(() => G.tally.update(rdt));
   updateUI(rdt);
 }
 const PERF = { js: 0, render: 0, rdt: 0 }; window.__perf = PERF;
