@@ -3,6 +3,7 @@ import * as CANNON from 'cannon-es';
 import { G, GRP, ALL, rand } from './state.js';
 import { A } from './assets.js';
 import { makeFacadeKit } from './facade.js';
+import { buildLandmarks } from './landmarks.js';
 
 function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
 let seed = 1337;
@@ -838,11 +839,13 @@ function buildPier9(C) {
   sea.rotation.x = -Math.PI / 2; sea.position.set(-50, -1.1, -170); scene.add(sea); wet.hide.push(sea);
 
   buildExpansion(C, { metal, rusty, stat, statCyl, mesh, floor, decal, glowMat, conc, lip, yellow, cont, contMats, contGeo, counterMat, canvasCols, lanternMat, redLights, haloTex, coneMat, lampSrc, crateGeo, boxMats, iceMat });
+  buildLandmarks(C, { metal, stat, statCyl, mesh, glowMat });
   L.updateExtra = (dt, center) => {
     if (G.fx) for (const [vx, vz] of L.vents) if (Math.abs(vz - center.z) < 22 && Math.random() < 0.55) G.fx.smoke.emit(vx + rand(-0.3, 0.3), 0.1, vz + rand(-0.3, 0.3), rand(-0.15, 0.15), rand(0.8, 1.6), rand(-0.15, 0.15), 0.32, 0.33, 0.37, rand(1.2, 2.2), 0.18, 0.9, -0.15, 0.5, 0.55);
     const blink = (G.rt % 1.6) < 0.5 ? 1 : 0.05;
     for (const s of redLights) s.material.opacity = blink;
     uwMat.opacity = 0.26 + Math.sin(G.rt * 0.7) * 0.06 + Math.sin(G.rt * 2.3) * 0.03;
+    if (L.landmarkTick) L.landmarkTick(dt, center);
   };
 }
 
@@ -1041,8 +1044,6 @@ function buildExpansion(C, H) {
   };
   boxcar(38, -86.5, 0); boxcar(51.5, -86.5, 1); boxcar(64, -71.5, 2); boxcar(70, -79, 0);
   // signal tower + gantry
-  mesh(new THREE.BoxGeometry(2.6, 6, 2.6), new THREE.MeshStandardMaterial({ color: 0x3b3027, roughness: 0.8 }), 74.5, 3, -68.5, 0); stat(74.5, 3, -68.5, 1.3, 3, 1.3);
-  mesh(new THREE.BoxGeometry(2.62, 0.9, 2.62), glowMat(1.8, 1.3, 0.6), 74.5, 5.2, -68.5, 0, false);
   mesh(new THREE.BoxGeometry(0.3, 7, 0.3), metal, 33, 3.5, -75.4, 0); mesh(new THREE.BoxGeometry(0.3, 7, 0.3), metal, 33, 3.5, -67, 0);
   mesh(new THREE.BoxGeometry(0.4, 0.4, 9), metal, 33, 7, -71.2, 0);
   for (const [sx, sz, red] of [[33, -71.5, 1], [33, -79, 0], [33, -86.5, 1]]) { const s3 = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: red ? new THREE.Color(3, 0.25, 0.2) : new THREE.Color(0.3, 3, 0.6), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); s3.position.set(sx, 6.5, sz); s3.scale.setScalar(0.8); scene.add(s3); }
