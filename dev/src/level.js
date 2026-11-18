@@ -242,7 +242,7 @@ export function buildLevel(scene, world, wet) {
   const marks = new THREE.Mesh(new THREE.PlaneGeometry(16, 52), new THREE.MeshStandardMaterial({ map: markingsTexture(), transparent: true, roughness: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
   marks.rotation.x = -Math.PI / 2; marks.position.set(0, 0.004, -1); marks.receiveShadow = true; scene.add(marks); wet.hide.push(marks);
   for (const sx of [-1, 1]) {
-    const sw = new THREE.Mesh(new THREE.PlaneGeometry(6, 52), pbr('pavement_03', 6 / 2.2, 52 / 2.2));
+    const sw = new THREE.Mesh(new THREE.PlaneGeometry(6, 52), pbr('concrete_pavement', 6 / 1.8, 52 / 1.8, { color: new THREE.Color(0.82, 0.8, 0.78) }));
     wet.patch(sw.material, { reflect: 0.55, puddles: 0.35 });
     sw.rotation.x = -Math.PI / 2; sw.position.set(sx * 11.5, 0.002, -1); sw.receiveShadow = true; scene.add(sw); wet.hide.push(sw);
     const curb = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 52), pbr('concrete_wall_008', 0.2, 18));
@@ -274,7 +274,7 @@ export function buildLevel(scene, world, wet) {
     for (let i = 0; i < 6; i++) { x.fillStyle = 'rgba(70,72,78,0.18)'; x.beginPath(); x.ellipse(Math.random() * 256, Math.random() * 256, 20 + Math.random() * 40, 10 + Math.random() * 20, Math.random() * 3, 0, 6.28); x.fill(); }
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
   })();
-  const tarMat = new THREE.MeshStandardMaterial({ map: roofTex, roughness: 0.82, metalness: 0.05, envMapIntensity: 0.6 });
+  const tarMat = new THREE.MeshStandardMaterial({ map: cloneTex(A.tex.tarred_gravel_d, 1, 1), normalMap: cloneTex(A.tex.tarred_gravel_n, 1, 1), roughnessMap: cloneTex(A.tex.tarred_gravel_arm, 1, 1), color: new THREE.Color(0.62, 0.62, 0.66), roughness: 1, metalness: 0.05, envMapIntensity: 0.6 });
   const parapetMat = pbr('concrete_wall_008', 1, 1);
   const acMat = new THREE.MeshStandardMaterial({ color: 0x8a8f94, roughness: 0.45, metalness: 0.7 }), grilleMat = new THREE.MeshStandardMaterial({ color: 0x1a1c1f, roughness: 0.7, metalness: 0.5 });
   const pipeMat = new THREE.MeshStandardMaterial({ color: 0x5d6166, roughness: 0.5, metalness: 0.75 }), tankMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2c, roughness: 0.85 });
@@ -283,7 +283,7 @@ export function buildLevel(scene, world, wet) {
   const roofTop = (x0, x1, z0, z1, h) => {
     L.roofs.push({ x0, x1, z0, z1, h });
     const w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    const top = new THREE.Mesh(scaleUV(new THREE.PlaneGeometry(w, d), w / 6, d / 6), tarMat); top.rotation.x = -Math.PI / 2; top.position.set(cx, h + 0.015, cz); top.receiveShadow = true; scene.add(top);
+    const top = new THREE.Mesh(scaleUV(new THREE.PlaneGeometry(w, d), w / 2.2, d / 2.2), tarMat); top.rotation.x = -Math.PI / 2; top.position.set(cx, h + 0.015, cz); top.receiveShadow = true; scene.add(top);
     const T = 0.28, PH = 0.75;
     for (const [px, pz, sx, sz] of [[cx, z0 + T / 2 - 0.12, w + 0.24, T], [cx, z1 - T / 2 + 0.12, w + 0.24, T], [x0 + T / 2 - 0.12, cz, T, d], [x1 - T / 2 + 0.12, cz, T, d]]) {
       const len = Math.max(sx, sz), g = scaleUV(new THREE.BoxGeometry(sx, PH, sz), len / 3, PH / 3);
@@ -782,7 +782,7 @@ function buildPier9(C) {
   decal(decalTexture((x, w, h) => { x.font = '800 60px Inter, Arial'; x.fillStyle = '#ffb060'; x.textAlign = 'center'; x.fillText('INK  ▾  PIER 9', w / 2, h / 2 + 20); }, 512, 128), 2.6, 0.65, 4.58, 1.8, -88.5, -Math.PI / 2, 0.85);
 
   // ---------------- PIER 9: the docks ----------------
-  floor('asphalt_02', -20.6, 14.6, -130.6, -92.4, 3.6, 1, 1, { normalScale: new THREE.Vector2(1.1, 1.1), envMapIntensity: 1.7 });
+  floor('concrete_floor_worn_001', -20.6, 14.6, -130.6, -92.4, 3.0, 0.9, 0.9, { color: new THREE.Color(0.6, 0.58, 0.54), envMapIntensity: 1.7 });
   block(15.0, 40, -136, -122, 12, ['-x', '+z', '+x'], { storeW: 9, lit: 0.18, noStore: ['+z'] });
   block(15.0, 40, -110, -92.4, 9, ['-x', '-z', '+z', '+x'], { storeW: 9, lit: 0.18, noStore: ['-z'] });
   const conc = pbr('concrete_wall_008', 12, 0.6);
@@ -919,7 +919,7 @@ function buildExpansion(C, H) {
   floor('asphalt_02', 12.4, 30, -12.5, -6.5, 3.2, 1, 1, { normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: 1.0 });
   block(12.9, 30, -27, -12.55, 12.9, ['+z'], { noStore: ['+z'] });
   block(12.9, 30, -6.45, 1, 8.9, ['-z'], { storeW: 5 });
-  floor('pavement_03', 30, 62, -30, 4, 2.6, 0.55, 0.35);
+  floor('granite_tile', 30, 62, -30, 4, 2.3, 0.9, 0.5, { color: new THREE.Color(0.7, 0.74, 0.82), roughness: 0.6 });
   block(20, 30, -30, -12.55, 14, ['+x'], { storeW: 6 });
   block(20, 30, -6.45, 6, 12, ['+x'], { storeW: 6 });
   block(28, 44, -42, -30, 10, ['+z', '-z', '+x'], { noStore: ['-z'] });
@@ -969,6 +969,9 @@ function buildExpansion(C, H) {
   // ================= TRAM CUT =================
   floor('asphalt_02', 44, 50, -48, -30, 3.2, 1, 1, { normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: 1.0 });
   floor('asphalt_02', 7.6, 44, -48, -42, 3.2, 1, 1, { normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: 1.0 });
+  // the track bed: setts with the rails set into them, down both legs of the cut
+  floor('cobblestone_embedded_asphalt', 45.6, 48.4, -48, -30, 1.9, 1, 1, { color: new THREE.Color(0.8, 0.78, 0.76) }).position.y = 0.003;
+  floor('cobblestone_embedded_asphalt', 7.6, 45.6, -47.7, -44.9, 1.9, 1, 1, { color: new THREE.Color(0.8, 0.78, 0.76) }).position.y = 0.003;
   block(28, 70, -66, -48, 7, ['+z', '-z'], { noStore: ['-z'] });
   block(50, 70, -48, -42, 12, ['-x'], { noStore: ['-x'] });
   block(70, 80, -66, -30, 7, ['-z'], { noStore: ['-z'] });
@@ -993,8 +996,7 @@ function buildExpansion(C, H) {
   decal(decalTexture((x, w, h) => { x.font = '900 64px Inter, Arial'; x.fillStyle = '#e9e4da'; x.textAlign = 'center'; x.globalAlpha = 0.8; x.fillText('WHO COUNTS THE COUNTERS?', w / 2, h / 2 + 22); }, 1024, 128), 6, 0.75, 20, 2.6, -47.95, 0, 0.8);
 
   // ================= COLD STORAGE (roofless cutaway) =================
-  const frostFloor = floor('pavement_03', -30, -7.6, -64.4, -46, 2.0, 0.55, 0.35);
-  frostFloor.material.color = new THREE.Color(0.75, 0.85, 1.0);
+  const frostFloor = floor('concrete_floor_worn_001', -30, -7.6, -64.4, -46, 3.0, 0.35, 0.15, { color: new THREE.Color(0.78, 0.86, 0.95) });
   block(-50, -30, -66, -44, 14, []);
   // insulated freezer panels: vertical seams, frost along the bottom, grime, a painted stripe
   const panelTex = tex2((x, w, h) => {
@@ -1035,7 +1037,7 @@ function buildExpansion(C, H) {
   const gravel = floor('asphalt_02', 30, 78, -92, -66, 2.4, 0.55, 0.35);
   gravel.material.color = new THREE.Color(0.62, 0.58, 0.55);
   block(78, 95, -104, -60, 14, ['-x'], { noStore: ['-x'] });
-  for (const rz of [-86.5, -79, -71.5]) rails(30, rz, 78, rz);
+  for (const rz of [-86.5, -79, -71.5]) { floor('gravel_floor_02', 30, 78, rz - 1.8, rz + 1.8, 2.0, 0.3, 0.2, { color: new THREE.Color(0.6, 0.56, 0.52) }).position.y = 0.003; rails(30, rz, 78, rz); }
   const boxcar = (x, z, mi) => {
     const m = new THREE.MeshStandardMaterial({ map: containerTexture(['#5a2a1c', '#2b3a4a', '#4a4a2a'][mi % 3], ['CS&P RAIL', 'TALLYFREIGHT', 'CANTOR SOUND'][mi % 3]), roughness: 0.7, metalness: 0.4 });
     const g = new THREE.BoxGeometry(12.5, 3.4, 2.9); g.rotateY(Math.PI / 2);
@@ -1053,7 +1055,7 @@ function buildExpansion(C, H) {
 
   // ================= CONTAINER YARD + TRANSIT SHED =================
   floor('asphalt_02', 40, 80, -136, -92, 3.6, 1, 1, { normalScale: new THREE.Vector2(1.1, 1.1), envMapIntensity: 1.7 });
-  floor('pavement_03', 14.6, 40, -122, -110, 2.4, 0.55, 0.35);
+  floor('concrete_floor_worn_001', 14.6, 40, -122, -110, 3.0, 0.5, 0.4, { color: new THREE.Color(0.55, 0.54, 0.52) });
   block(80, 95, -140, -92, 14, ['-x'], { noStore: ['-x'] });
   mesh(new THREE.BoxGeometry(40.6, 1.8, 0.6), conc, 60, -0.9, -136.3, 0, false);
   mesh(new THREE.BoxGeometry(40, 0.16, 0.35), H.lip, 60, 0.08, -135.8, 0, false);
@@ -1077,8 +1079,7 @@ function buildExpansion(C, H) {
   for (const [lx, lz] of [[21, -116], [33, -116]]) { mesh(new THREE.ConeGeometry(0.5, 0.4, 12, 1, true), metal, lx, 5.0, lz, 0, false); addSpot(lx, 4.6, lz, 0xffc070, 18, 11, 1.6); }
 
   // ================= FERRY PIER =================
-  const deck = floor('pavement_03', -62, -20.6, -120, -104, 2.0, 0.55, 0.35);
-  deck.material.color = new THREE.Color(0.72, 0.62, 0.52);
+  const deck = floor('weathered_planks', -62, -20.6, -120, -104, 2.0, 0.35, 0.25);
   mesh(new THREE.BoxGeometry(41.4, 1.8, 0.5), conc, -41.3, -0.9, -120.25, 0, false); mesh(new THREE.BoxGeometry(41.4, 1.8, 0.5), conc, -41.3, -0.9, -103.75, 0, false); mesh(new THREE.BoxGeometry(0.5, 1.8, 16.5), conc, -62.25, -0.9, -112, 0, false);
   for (let x = -60; x <= -24; x += 4.5) for (const z of [-120.6, -103.4]) mesh(new THREE.CylinderGeometry(0.3, 0.3, 3, 8), new THREE.MeshStandardMaterial({ color: 0x2a221c, roughness: 0.9 }), x, -1.4, z, 0, false);
   stat(-41.3, 2, -120.5, 20.7, 2, 0.35, 0, GRP.HERO); stat(-41.3, 2, -103.5, 20.7, 2, 0.35, 0, GRP.HERO); stat(-62.5, 2, -112, 0.35, 2, 8, 0, GRP.HERO);

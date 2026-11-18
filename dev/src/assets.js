@@ -12,7 +12,8 @@ const MODELS = ['iris', 'counter', 'marksman', 'auditor', 'civ_m', 'civ_f', 'tra
 const ANIMS = ['f_idle_neutral_01', 'f_walk_cool_01', 'f_run_fast_01', 'm_idle_neutral_01', 'm_walk_cool_01', 'm_run_fast_01',
   'm_idle_angry_01', 'f_idle_angry_01', 'm_crouch_idle', 'f_crouch_idle', 'm_walk_bruised', 'm_run_injured', 'f_walk_bruised', 'f_run_injured'];
 const TEXTURES = ['asphalt_02_d', 'asphalt_02_n', 'asphalt_02_arm', 'pavement_03_d', 'pavement_03_n', 'pavement_03_arm',
-  'dark_brick_wall_d', 'dark_brick_wall_n', 'dark_brick_wall_arm', 'red_brick_d', 'red_brick_n', 'red_brick_arm', 'factory_brick_d', 'factory_brick_n', 'factory_brick_arm', 'plaster_wall_d', 'plaster_wall_n', 'plaster_wall_arm', 'concrete_wall_008_d', 'concrete_wall_008_n', 'concrete_wall_008_arm'];
+  'dark_brick_wall_d', 'dark_brick_wall_n', 'dark_brick_wall_arm', 'red_brick_d', 'red_brick_n', 'red_brick_arm', 'factory_brick_d', 'factory_brick_n', 'factory_brick_arm', 'plaster_wall_d', 'plaster_wall_n', 'plaster_wall_arm', 'concrete_wall_008_d', 'concrete_wall_008_n', 'concrete_wall_008_arm',
+  ...['concrete_pavement', 'granite_tile', 'cobblestone_embedded_asphalt', 'concrete_floor_worn_001', 'gravel_floor_02', 'weathered_planks', 'tarred_gravel'].flatMap(k => [k + '_d', k + '_n', k + '_arm'])];   // one floor per zone (art panel)
 
 // Asset bytes ship inside script "packs" (base64) so the game runs anywhere a plain page can —
 // including hosts that won't serve .glb/.hdr. Falls back to fetching loose files.
