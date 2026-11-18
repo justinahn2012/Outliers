@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { G } from './state.js';
 
 const VIOLET = new THREE.Color(0x9b7bff);
-const MAX_VOX = 1800;
+const MAX_VOX = 6000;
 
 // ---------------------------------------------------------------- voxelising (once per prop type, cached)
 const texCache = new Map();
@@ -55,7 +55,7 @@ function voxelize(root) {
   });
   if (!tris.length) return null;
   const size = box.getSize(new THREE.Vector3()), maxD = Math.max(size.x, size.y, size.z);
-  let cell = THREE.MathUtils.clamp(maxD / 6, 0.16, 0.25);   // big enough to read as cubes from the top-down camera
+  let cell = THREE.MathUtils.clamp(maxD / 16, 0.06, 0.12);  // fine enough that the object keeps its silhouette
   const col = new THREE.Color(), tc = new THREE.Color();
   for (let attempt = 0; attempt < 5; attempt++) {
     const NX = Math.max(1, Math.ceil(size.x / cell) + 1), NY = Math.max(1, Math.ceil(size.y / cell) + 1);
@@ -63,7 +63,7 @@ function voxelize(root) {
     for (const tr of tris) {
       const [ax, ay, az, bx, by, bz, cx, cy, cz, uvs, mat] = tr;
       const e = Math.max(Math.hypot(bx - ax, by - ay, bz - az), Math.hypot(cx - ax, cy - ay, cz - az), Math.hypot(cx - bx, cy - by, cz - bz));
-      const n = Math.min(48, Math.max(1, Math.ceil(e / (cell * 0.5))));
+      const n = Math.min(96, Math.max(1, Math.ceil(e / (cell * 0.5))));
       const base = mat && (mat.userData && mat.userData.baseColor || mat.color) || tc.setRGB(0.3, 0.3, 0.32);
       const rd = mat && mat.map ? texReader(mat.map) : null;
       // the prop's own emissive (tail lights, fire), not whatever hint-glow it happens to wear right now
@@ -81,14 +81,16 @@ function voxelize(root) {
         a[0] += col.r; a[1] += col.g; a[2] += col.b; a[3]++;
       }
     }
-    if (acc.size > MAX_VOX) { cell *= 1.25; continue; }
+    if (acc.size > MAX_VOX) { cell *= 1.2; continue; }
     const n = acc.size, P = new Float32Array(n * 3), Cl = new Float32Array(n * 3);
     let i = 0;
     for (const a of acc.values()) {
       P[i * 3] = box.min.x + (a[4] + 0.5) * cell; P[i * 3 + 1] = box.min.y + (a[5] + 0.5) * cell; P[i * 3 + 2] = box.min.z + (a[6] + 0.5) * cell;
       Cl[i * 3] = a[0] / a[3]; Cl[i * 3 + 1] = a[1] / a[3]; Cl[i * 3 + 2] = a[2] / a[3]; i++;
     }
-    return { n, P, Cl, cell, minY: box.min.y, maxY: box.max.y, rad: Math.max(size.x, size.z) / 2 };
+    const Mt = new Float32Array(n * 16), m4 = new THREE.Matrix4();
+    for (let j = 0; j < n; j++) { m4.makeScale(cell * 0.9, cell * 0.9, cell * 0.9).setPosition(P[j * 3], P[j * 3 + 1], P[j * 3 + 2]); m4.toArray(Mt, j * 16); }
+    return { n, P, Cl, Mt, cell, minY: box.min.y, maxY: box.max.y, rad: Math.max(size.x, size.z) / 2 };
   }
   return null;
 }
@@ -103,10 +105,10 @@ void main(){
   vec3 c = instanceMatrix[3].xyz;
   float yN = (c.y - uMinY) / max(0.001, uMaxY - uMinY);
   float show = step(yN, uIn) * step(uOut, yN);                     // between the out line and the in line
-  float blink = step(0.97, hs(aRnd * 91.0 + floor(uTime * 8.0)));  // ~3% of cubes drop a frame at a time
-  float breathe = 1.0 + 0.07 * sin(uTime * 6.0 + aRnd * 40.0);
+  float blink = step(0.985, hs(aRnd * 91.0 + floor(uTime * 8.0))); // ~1.5% of cubes drop a frame at a time
+  float breathe = 1.0 + 0.05 * sin(uTime * 6.0 + aRnd * 40.0);
   float s = show * (1.0 - blink) * breathe;
-  vec3 jit = (vec3(hs(aRnd * 7.0 + floor(uTime * 12.0)), hs(aRnd * 13.0 + floor(uTime * 12.0)), hs(aRnd * 17.0 + floor(uTime * 12.0))) - 0.5) * uCell * 0.12 * step(0.9, hs(aRnd * 3.0 + floor(uTime * 3.0)));
+  vec3 jit = (vec3(hs(aRnd * 7.0 + floor(uTime * 12.0)), hs(aRnd * 13.0 + floor(uTime * 12.0)), hs(aRnd * 17.0 + floor(uTime * 12.0))) - 0.5) * uCell * 0.5 * step(0.96, hs(aRnd * 3.0 + floor(uTime * 3.0)));
   vec3 p = c + jit + (mat3(instanceMatrix) * position) * s;
   vP = position; vN = normal; vCol = aCol; vY = yN; vRnd = aRnd;
   vFront = (1.0 - smoothstep(0.0, 0.14, abs(yN - uIn))) * step(uIn, 0.999);      // only while the sweep is running: from above you mostly see the top layer
@@ -119,11 +121,12 @@ varying vec3 vCol; varying vec3 vP; varying vec3 vN; varying float vY; varying f
 void main(){
   vec3 a = abs(vP);
   float mx = max(a.x, max(a.y, a.z)), mn = min(a.x, min(a.y, a.z)), mid = a.x + a.y + a.z - mx - mn;
-  float edge = smoothstep(0.36, 0.47, mid);                         // the cube's own edges
+  float px = fwidth(vP.x) + fwidth(vP.y) + fwidth(vP.z);            // cube-local units per pixel
+  float edge = smoothstep(0.34, 0.46, mid) * (1.0 - smoothstep(0.08, 0.22, px)) + 0.2 * smoothstep(0.08, 0.22, px);
   vec3 vio = vec3(0.61, 0.48, 1.0);
   // the object's colour, lifted so it reads as light, never as a dark lump
-  vec3 body = vCol * 0.85 + vio * 0.07 + 0.008;
-  body *= 0.62 + 0.38 * max(vN.y, 0.0) + 0.1 * abs(vN.x);
+  vec3 body = vCol * 1.3 + vio * 0.06 + 0.008;
+  body *= 0.5 + 0.5 * max(vN.y, 0.0) + 0.14 * abs(vN.x);          // lit top, darker flanks: the form still reads as a solid
   float pulse = smoothstep(0.09, 0.0, abs(fract(uTime * 0.9 + 0.13) - vY));    // a data pulse climbing through it
   float spark = step(0.985, fract(sin(vRnd * 77.0 + floor(uTime * 10.0)) * 43758.5453));
   vec3 col = mix(body, vec3(0.42, 0.24, 1.0) * 0.85, edge * 0.9) + vec3(0.6, 0.5, 1.0) * (pulse * 0.35 + spark * 0.8) * (0.25 + 0.75 * edge);
@@ -171,7 +174,7 @@ export function makeDigitizer(scene) {
     const mat = baseMat.clone();
     mat.uniforms.uMinY.value = d.minY - 0.001; mat.uniforms.uMaxY.value = d.maxY + 0.001; mat.uniforms.uCell.value = d.cell;
     const im = new THREE.InstancedMesh(geo, mat, d.n);
-    for (let i = 0; i < d.n; i++) { M.compose(P.set(d.P[i * 3], d.P[i * 3 + 1], d.P[i * 3 + 2]), Q.identity(), S.setScalar(d.cell * 0.86)); im.setMatrixAt(i, M); }
+    im.instanceMatrix.array.set(d.Mt);
     im.userData.vox = true; im.castShadow = false; im.frustumCulled = false;
     o.mesh.add(im);
     return { im, mat, d, phase: 'in', t: 0, shedAcc: 0 };
@@ -186,7 +189,7 @@ export function makeDigitizer(scene) {
       const out = new THREE.Vector3(W.x - o.body.position.x, 0, W.z - o.body.position.z).normalize();
       const sp = burst ? 1.5 + Math.random() * 2.5 : 0.3 + Math.random() * 0.5;
       shed.push({ x: W.x, y: W.y, z: W.z, vx: out.x * sp + (Math.random() - 0.5) * 0.4, vy: burst ? Math.random() * 2 : 0.6 + Math.random() * 0.8, vz: out.z * sp + (Math.random() - 0.5) * 0.4,
-        t: 0, life: burst ? 0.35 + Math.random() * 0.3 : 0.6 + Math.random() * 0.5, s: d.cell * (0.5 + Math.random() * 0.4), amber: burst && Math.random() < 0.35 });
+        t: 0, life: burst ? 0.35 + Math.random() * 0.3 : 0.6 + Math.random() * 0.5, s: d.cell * (0.9 + Math.random() * 0.8), amber: burst && Math.random() < 0.35 });
     }
   };
 
@@ -204,7 +207,7 @@ export function makeDigitizer(scene) {
       const u = st.mat.uniforms;
       u.uTime.value = t;
       if (want && st.phase === 'out') { st.phase = 'held'; u.uOut.value = 0; u.uIn.value = 1; setMeshVisible(o, false); }
-      if (!want && st.phase !== 'out') { st.phase = 'out'; st.t = 0; setMeshVisible(o, true); shedFrom(o, st, 10 + Math.min(20, st.d.n >> 4), true); }
+      if (!want && st.phase !== 'out') { st.phase = 'out'; st.t = 0; setMeshVisible(o, true); shedFrom(o, st, 14 + Math.min(40, st.d.n >> 5), true); }
       st.t += dt;
       if (st.phase === 'in') {
         u.uIn.value = Math.min(1.001, st.t / 0.18);
