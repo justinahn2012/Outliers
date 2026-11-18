@@ -43,6 +43,16 @@ export function createHero() {
       m.map = t; m.needsUpdate = true;
     } catch (err) { /* keep the original texture */ }
   }
+  // the backups inked on her arms (characters.md Fix 6): three bands round each forearm painted into the sleeve as an
+  // emissive map, so the ink deforms with the cloth; tally ticks cut through them for close-ups
+  const inkMats = [];
+  {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 512; const x = cv.getContext('2d');
+    x.fillStyle = '#000'; x.fillRect(0, 0, 512, 512); x.filter = 'blur(1px)';
+    for (const u of [0.085, 0.115, 0.145, 0.915, 0.885, 0.855]) { x.fillStyle = '#fff'; x.fillRect((u - 0.007) * 512, 0.285 * 512, 0.014 * 512, 0.21 * 512); x.fillStyle = '#000'; for (let v = 0.285 * 512; v < 0.495 * 512; v += 6) x.fillRect((u - 0.007) * 512, v, 0.014 * 512, 1); }
+    const ink = new THREE.CanvasTexture(cv); ink.colorSpace = THREE.SRGBColorSpace;
+    for (const m of c.mats) if (!(m.alphaTest > 0) && /body/.test(m.name)) { ink.flipY = m.map ? m.map.flipY : false; m.emissiveMap = ink; m.emissive = new THREE.Color(0x8f6bff); m.emissiveIntensity = 0.15; m.needsUpdate = true; inkMats.push(m); }
+  }
   // her signature: a violet edge, so she reads at a glance against black-clad Census
   for (const m of c.mats) if (!(m.alphaTest > 0)) addRim(m, 0x9b6bff, 0.6, 0.72);
 
@@ -70,9 +80,8 @@ export function createHero() {
   const light = new THREE.PointLight(0xa58cff, 1.5, 6, 2); light.position.set(0, 1.2, 0.9); root.add(light);
   G.scene.add(root);
   // the backups inked on her arms: three bands round each forearm that burn violet when she reaches into the record
-  const bandMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.7, 0.45, 1.6), toneMapped: false, transparent: true, opacity: 0.5, depthWrite: false });
-  const bandGeo = new THREE.TorusGeometry(0.05, 0.0042, 5, 22);
-  const bands = []; for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(bandGeo, bandMat); m.renderOrder = 7; G.scene.add(m); bands.push(m); }
+  // (the ink itself is in the sleeve's emissive map; these are the forearm flares that read at 60 px while she conducts)
+  const armGlow = [0, 1].map(() => mkSprite(glowTex, new THREE.Color(1.0, 0.7, 2.4), 0.26));
 
   const body = new CANNON.Body({ mass: 70, material: G.charMat, fixedRotation: true, linearDamping: 0.0, collisionFilterGroup: GRP.HERO, collisionFilterMask: ALL & ~GRP.HELD, allowSleep: false });
   body.addShape(new CANNON.Sphere(0.36), new CANNON.Vec3(0, -0.47, 0));
@@ -81,7 +90,7 @@ export function createHero() {
   G.world.addBody(body);
 
   const hero = {
-    kind: 'hero', root, model, body, char: c, bones, hair, handGlow, handHalo, browGlow, browHalo, aura, light, U, trail: new HandTrail(), flourish: null, bands, bandMat,
+    kind: 'hero', root, model, body, char: c, bones, hair, handGlow, handHalo, browGlow, browHalo, aura, light, U, trail: new HandTrail(), flourish: null, inkMats, armGlow,
     hp: 100, maxHp: 100, focus: 100, maxFocus: 100,
     yaw: Math.PI, moveAmt: 0, power: 0, lastHurt: -10, focusDelay: 0, levitate: 0, invuln: 0, dead: false,
     pos: new THREE.Vector3(0, 0, 12), aimW: [0, 0], stepT: 0, stepSide: 1,
@@ -378,16 +387,15 @@ export function updateHeroVisual(h, dt, holds) {
   h.aura.material.opacity = 0.25 + h.power * 0.6;
   h.aura.rotation.z += dt * (0.4 + h.power * 2);
   // tattoo bands ride the forearms; they glow with how hard she is writing
-  if (h.bands && B.lF && B.lH && B.rF && B.rH) {
-    let i = 0;
-    for (const [F, H] of [[B.lF, B.lH], [B.rF, B.rH]]) {
-      F.getWorldPosition(_t); H.getWorldPosition(_c); _d.copy(_c).sub(_t); const len = _d.length(); _d.normalize();
-      for (const f of [0.38, 0.55, 0.72]) { const m = h.bands[i++]; m.position.copy(_t).addScaledVector(_d, len * f); m.quaternion.setFromUnitVectors(_Z, _d); m.visible = !h.dead; }
-    }
+  if (h.inkMats && B.lF && B.lH && B.rF && B.rH) {
     const want = 0.12 + h.power * 0.9 + (holds.length ? 0.35 : 0) + Math.min(0.4, (h.surgePose || 0));
     h.bandGlow = (h.bandGlow || 0) + (want - (h.bandGlow || 0)) * damp(8, dt);
-    h.bandMat.opacity = Math.min(1, h.bandGlow) * (0.85 + Math.sin(G.rt * 7) * 0.15);
-    h.bandMat.color.setRGB(0.5 + h.bandGlow * 0.8, 0.28 + h.bandGlow * 0.4, 1.4 + h.bandGlow * 1.5);
+    const flick = 0.85 + Math.sin(G.rt * 7) * 0.15;
+    for (const m of h.inkMats) m.emissiveIntensity = (0.15 + h.bandGlow * 2.6) * flick;
+    [[B.lF, B.lH], [B.rF, B.rH]].forEach(([F, H], k) => {
+      F.getWorldPosition(_t); H.getWorldPosition(_c); const s = h.armGlow[k];
+      s.position.copy(_t).lerp(_c, 0.55); s.material.opacity = h.dead ? 0 : Math.max(0, h.bandGlow - 0.3) * 0.7 * flick;
+    });
   }
 }
 const _Z = new THREE.Vector3(0, 0, 1);

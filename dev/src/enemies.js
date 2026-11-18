@@ -67,7 +67,19 @@ function droneVisual(kind) {
     lamp = add(new THREE.BoxGeometry(0.16, 0.035, 0.16), amber, 0, -0.23, 0);
     add(new THREE.BoxGeometry(0.19, 0.03, 0.19), dark, 0, -0.205, 0);
   }
-  return { g, mats, rotors };
+  // from above (the camera's view) each drone needs its own mark: the Clerk wears a seal, the Lamplighter a beacon
+  let beacon = null, beaconGlow = null;
+  if (big) {
+    beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0x1a0c00, emissive: 0xffb040, emissiveIntensity: 0.6 }));
+    beacon.position.y = 0.69; g.add(beacon);
+    beaconGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: softTex(), color: new THREE.Color(2.4, 1.2, 0.3), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    beaconGlow.scale.setScalar(1.4); beaconGlow.position.y = 0.72; beaconGlow.renderOrder = 9; g.add(beaconGlow);
+  } else {
+    const seal = new THREE.MeshStandardMaterial({ color: 0x1a0c00, emissive: 0xff8a20, emissiveIntensity: 1.8 });
+    const t = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.012, 6, 20), seal); t.rotation.x = Math.PI / 2; t.position.y = 0.25; g.add(t);
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.01, 0.07), seal); b.position.y = 0.255; b.rotation.y = Math.PI / 4; g.add(b);
+  }
+  return { g, mats, rotors, beacon, beaconGlow };
 }
 let spotTex = null;
 function spotTexture() {
@@ -124,7 +136,8 @@ function makeRifle() {
   const add = (geo, mat, x, y, z, rx = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = true; g.add(m); return m; };
   add(new THREE.BoxGeometry(0.065, 0.11, 0.36), rifleMat, 0, 0, 0.02);                      // receiver
   add(new THREE.BoxGeometry(0.06, 0.085, 0.26), rifleMat2, 0, 0.005, 0.3);                  // handguard
-  add(new THREE.CylinderGeometry(0.016, 0.016, 0.3, 8), rifleMat, 0, 0.012, 0.56, Math.PI / 2); // barrel
+  add(new THREE.CylinderGeometry(0.016, 0.016, 0.5, 8), rifleMat, 0, 0.012, 0.66, Math.PI / 2); // barrel: long enough to read as a line from above
+  add(new THREE.BoxGeometry(0.04, 0.04, 0.08), rifleMat, 0, 0.012, 0.93);                    // muzzle
   add(new THREE.BoxGeometry(0.05, 0.1, 0.26), rifleMat2, 0, -0.025, -0.28);                 // stock
   add(new THREE.BoxGeometry(0.04, 0.15, 0.07), rifleMat, 0, -0.12, 0.08, 0.25);              // magazine
   add(new THREE.BoxGeometry(0.035, 0.11, 0.05), rifleMat2, 0, -0.09, -0.08, -0.3);           // grip
@@ -156,6 +169,16 @@ export function spawnEnemy(type, x, z) {
     gear.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: softTex(), color: type === 'auditor' ? new THREE.Color(2.2, 0.3, 0.2) : new THREE.Color(2.2, 1.1, 0.25), transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
     gear.glow.scale.setScalar(type === 'auditor' ? 0.6 : 0.32); G.scene.add(gear.glow);
   }
+  if (type === 'counter') {
+    // stun baton in the right hand: a red rod you can see from above (characters.md Fix 5); origin at the grip, along +Y
+    const bt = new THREE.Group();
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.14, 8), new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.9 })); grip.position.y = 0.07; bt.add(grip);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.28, 8), new THREE.MeshStandardMaterial({ color: 0x121316, metalness: 0.3, roughness: 0.6 })); shaft.position.y = 0.28; bt.add(shaft);
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.14, 8), new THREE.MeshStandardMaterial({ color: 0x1a0503, emissive: 0xff3b2f, emissiveIntensity: 1.2 })); tip.position.y = 0.49; bt.add(tip);
+    bt.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    gear.baton = bt; gear.batonTip = tip; G.scene.add(bt);
+    gear.glow.material.color.setRGB(2.4, 0.45, 0.35);
+  }
   if (type === 'marksman') { gear.rifle = makeRifle(); G.scene.add(gear.rifle); c.obj.traverse(o => { if (o.isMesh && /machinegun/.test(o.material.name)) o.visible = false; }); }   // she carries ours, not the slung one
   // the informant is a civilian with Moth's address glowing on a phone in his hand
   if (type === 'informant') {
@@ -167,12 +190,13 @@ export function spawnEnemy(type, x, z) {
   const civ = def.model === 'civ_m' || def.model === 'civ_f';
   for (const m of c.mats) addRim(m, type === 'auditor' ? 0xff5a30 : 0xff9a1a, civ || m.alphaTest > 0 ? 0 : 0.3, 0.8);
   if (type === 'lobber') {
-    gear.pack = new THREE.Group();
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, 0.05), new THREE.MeshStandardMaterial({ color: 0x1b1d20, metalness: 0.4, roughness: 0.6 })); plate.position.z = 0.03; gear.pack.add(plate);
-    const canMat = new THREE.MeshStandardMaterial({ color: 0x2f3a28, metalness: 0.5, roughness: 0.45 }), bandMat = new THREE.MeshStandardMaterial({ color: 0x0a1a06, emissive: 0x58ff40, emissiveIntensity: 1.2 });
+    // three green caps that face the camera: grenades, from above (characters.md Fix 5)
+    gear.pack = new THREE.Group(); const tilt = new THREE.Group(); tilt.rotation.x = 0.25; gear.pack.add(tilt);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.42, 0.05), new THREE.MeshStandardMaterial({ color: 0x1b1d20, metalness: 0.4, roughness: 0.6 })); plate.position.z = 0.03; tilt.add(plate);
+    const canMat = new THREE.MeshStandardMaterial({ color: 0x2f3a28, metalness: 0.5, roughness: 0.45 }), capMat = new THREE.MeshStandardMaterial({ color: 0x0a1a06, emissive: 0x58ff40, emissiveIntensity: 1.8 });
     for (const k of [-1, 0, 1]) {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.27, 10), canMat); m.position.set(k * 0.105, 0, -0.04); m.castShadow = true; gear.pack.add(m);
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.025, 10), bandMat); band.position.set(k * 0.105, 0.07, -0.04); gear.pack.add(band);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.34, 10), canMat); m.position.set(k * 0.14, 0, -0.05); m.castShadow = true; tilt.add(m);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.067, 0.067, 0.025, 10), capMat); cap.position.set(k * 0.14, 0.18, -0.05); tilt.add(cap);
     }
     G.scene.add(gear.pack);
   }
@@ -236,7 +260,7 @@ function spawnDrone(type, def, x, z) {
   }
   const e = {
     kind: 'enemy', type, def, root, model: V.g, char: null, bones: null, gear, hb, ring, blob, body, stepT: 0, mass: def.mass, radius: def.drone === 'lamp' ? 1.5 : 0.45, hh: 0.3 * s,
-    hp: def.hp, maxHp: def.hp, state: 'spawn', stateT: 0, atkCD: rand(1, 2), yaw: 0, fly: true, rotors: V.rotors,
+    hp: def.hp, maxHp: def.hp, state: 'spawn', stateT: 0, atkCD: rand(1, 2), yaw: 0, fly: true, rotors: V.rotors, beacon: V.beacon, beaconGlow: V.beaconGlow,
     dead: false, alive: true, held: null, thrown: false, thrownT: 0, antiGrav: 0,
     lastHit: new Map(), prev: new THREE.Vector3(x, def.hover, z), stuckT: 0, sideSteer: 0, flinch: 0, hpShow: 0,
     downT: 0, fade: 1, strafe: Math.random() < 0.5 ? -1 : 1, spawnT: 0, stun: 0, spotP: new THREE.Vector3(x, 0, z), countT: 0,
@@ -280,6 +304,7 @@ export function setRagdoll(e, on) {
 }
 
 const _q = new THREE.Quaternion(), _up = new THREE.Vector3(0, 1, 0), _p = new THREE.Vector3(), _t = new THREE.Vector3(), _f = new THREE.Vector3();
+const _bt = new THREE.Vector3();
 const _e = new THREE.Euler();
 
 export function updateEnemyVisual(e, dt) {
@@ -390,9 +415,17 @@ export function updateEnemyVisual(e, dt) {
   }
   // gear placement
   if (e.gear.glow && B.rH) { B.rH.getWorldPosition(_p); e.gear.glow.position.copy(_p); e.gear.glow.material.opacity = e.dead ? 0 : (e.state === 'windup' || e.state === 'slamWind' ? 1 : 0.45) * (0.8 + Math.sin(G.rt * 20) * 0.2); }
+  if (e.gear.baton && B.rH && B.rF) {
+    B.rH.getWorldPosition(_p); B.rF.getWorldPosition(_bt);
+    _bt.subVectors(_p, _bt).normalize().lerp(_up, 0.55).normalize();
+    const bt = e.gear.baton; bt.position.copy(_p).addScaledVector(_bt, -0.05); bt.quaternion.setFromUnitVectors(_up, _bt); bt.visible = e.fade > 0.3;
+    const hotK = e.state === 'windup' || e.state === 'strike';
+    e.gear.batonTip.material.emissiveIntensity = e.dead ? 0.2 : hotK ? 4.0 : 1.2;
+    if (e.gear.glow) { e.gear.glow.position.copy(bt.position).addScaledVector(_bt, 0.49); e.gear.glow.scale.setScalar(hotK ? 0.42 : 0.28); }
+  }
   if (e.gear.rifle && B.rH && (limp || e.dead)) { B.rH.getWorldPosition(_p); e.gear.rifle.position.copy(_p); e.gear.rifle.quaternion.copy(e.root.quaternion); }
   if (e.gear.pack && B.spine) {
-    B.spine.getWorldPosition(_p); e.gear.pack.position.set(_p.x - fx * 0.16, _p.y - 0.02, _p.z - fz * 0.16);
+    B.spine.getWorldPosition(_p); e.gear.pack.position.set(_p.x - fx * 0.18, _p.y + 0.04, _p.z - fz * 0.18);
     e.gear.pack.quaternion.copy(e.root.quaternion); e.gear.pack.visible = e.fade > 0.3;
   }
   if (e.flinch > 0 && !limp && !e.dead && B.spine && e.hitDir) {
@@ -481,6 +514,7 @@ function updateDroneVisual(e, dt) {
   if (b.fixedRotation) { const tilt = Math.min(0.35, Math.hypot(b.velocity.x, b.velocity.z) * 0.05); _q.setFromEuler(_e.set(b.velocity.z * 0.03 * (big ? 0.3 : 1), e.yaw, -b.velocity.x * 0.03 * (big ? 0.3 : 1))); e.root.quaternion.slerp(_q, damp(8, dt)); if (tilt < 0) e.root.quaternion.identity(); }
   else e.root.quaternion.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
   for (const r of e.rotors) r.rotation.y += dt * (e.dead ? 4 : 40);
+  if (e.beacon) { const on = !e.dead && ((G.rt * 1.2) % 1) >= 0.5; e.beacon.material.emissiveIntensity = e.dead ? 0 : 0.6 + (on ? 2.4 : 0); e.beaconGlow.material.opacity = on ? 0.85 : 0; }
   if (e.state === 'spawn') e.model.scale.setScalar(Math.min(1, 0.01 + e.spawnT * 2));
   else e.model.scale.setScalar(Math.max(0.01, e.fade));
   if (e.glitchT > 0) { e.glitchT -= dt; e.root.visible = e.glitchT <= 0 || Math.random() > 0.2; if (e.glitchT > 0) { e.root.position.x += (Math.random() - 0.5) * 0.3; } } else e.root.visible = true;

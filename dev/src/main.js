@@ -1535,7 +1535,7 @@ function lampCounted(e, hp) {
   }, 150 + k * 130);
 }
 function gunPos(e) {
-  if (e.gear && e.gear.rifle) { const r = e.gear.rifle; r.updateMatrixWorld(); return new THREE.Vector3(0, 0.012, 0.72).applyMatrix4(r.matrixWorld); }
+  if (e.gear && e.gear.rifle) { const r = e.gear.rifle; r.updateMatrixWorld(); return new THREE.Vector3(0, 0.012, 0.97).applyMatrix4(r.matrixWorld); }
   const b = e.body;
   const fx = Math.sin(e.yaw), fz = Math.cos(e.yaw);
   return new THREE.Vector3(b.position.x + fx * 0.75 + fz * 0.25, b.position.y + 0.55, b.position.z + fz * 0.75 - fx * 0.25);
