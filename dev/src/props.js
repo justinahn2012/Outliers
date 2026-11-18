@@ -4,7 +4,7 @@ import { makeShieldVisual, SHIELD_SIZE } from './shield.js';
 import * as CANNON from 'cannon-es';
 import { G, GRP, ALL, clamp, rand } from './state.js';
 import { A } from './assets.js';
-import { containerTexture } from './level.js';
+import { containerTexture, containerMatSet } from './level.js';
 
 // Every liftable thing is a photoscanned prop with real mass and real durability.
 // hp = how much gunfire it soaks as a shield before it comes apart.
@@ -60,7 +60,7 @@ function template(type) {
   }
   if (def.proc === 'container') {
     const g = new THREE.Group();
-    const m = new THREE.Mesh(new THREE.BoxGeometry(6.06, 2.59, 2.44), new THREE.MeshStandardMaterial({ map: containerTexture('#5a2a6a', 'CANTOR SOUND'), roughness: 0.6, metalness: 0.45 }));
+    const m = new THREE.Mesh(new THREE.BoxGeometry(6.06, 2.59, 2.44), containerMatSet('#5a2a6a', 'CANTOR SOUND'));
     m.castShadow = m.receiveShadow = true; g.add(m);
     return (TEMPLATES[type] = { g, size: new THREE.Vector3(6.06, 2.59, 2.44) });
   }
@@ -100,12 +100,16 @@ export function makeProp(type, x, z, rotY = 0, y = null, chunkOf = null) {
   const glowMats = [];
   mesh.traverse(o => {
     if (o.isMesh && o.material) {
-      o.material = o.material.clone();
-      o.material.userData.baseColor = o.material.color.clone();
-      o.material.userData.baseEmissive = (o.material.emissive || new THREE.Color()).clone();
-      o.material.userData.baseEI = o.material.emissiveIntensity ?? 1;
-      o.material.envMapIntensity = 0.8;
-      if (o.material.emissive) glowMats.push(o.material);     // unlit parts (LEDs on pulled-down fliers) don't take a glow
+      const prep = (src) => {
+        const m = src.clone();
+        m.userData.baseColor = m.color.clone();
+        m.userData.baseEmissive = (m.emissive || new THREE.Color()).clone();
+        m.userData.baseEI = m.emissiveIntensity ?? 1;
+        m.envMapIntensity = 0.8;
+        if (m.emissive) glowMats.push(m);     // unlit parts (LEDs on pulled-down fliers) don't take a glow
+        return m;
+      };
+      o.material = Array.isArray(o.material) ? o.material.map(prep) : prep(o.material);   // containers carry one material per face
     }
   });
   const hh = size.y / 2;

@@ -219,6 +219,33 @@ function apartmentAtlas() {
   return { back, mid: tex(m) };
 }
 
+// ------------------------------------------------------------------ skylights: rooms seen from above (environment.md Fix 8)
+// back = the floor of the room below (4 x 2 cells, 384 x 256 each), mid = ceiling fan blades (0-3) or a hanging bulb (4-7)
+function skylightAtlas() {
+  const CW = 384, CH = 256, [c, x] = cv(CW * 4, CH * 2), [m, y] = cv(CW * 4, CH * 2); y.clearRect(0, 0, CW * 4, CH * 2);
+  const at = (i) => [(i % 4) * CW, Math.floor(i / 4) * CH];
+  const floor = (i, kind) => { const [ox, oy] = at(i);
+    if (kind === 'wood') { x.fillStyle = '#5a3e2a'; x.fillRect(ox, oy, CW, CH); for (let k = 0; k < CH; k += 18) { x.fillStyle = `rgba(0,0,0,${0.15 + R() * 0.15})`; x.fillRect(ox, oy + k, CW, 2); } }
+    else if (kind === 'tile') { x.fillStyle = '#9aa4a6'; x.fillRect(ox, oy, CW, CH); x.strokeStyle = 'rgba(40,50,52,0.5)'; for (let k = 0; k <= CW; k += 32) { x.beginPath(); x.moveTo(ox + k, oy); x.lineTo(ox + k, oy + CH); x.stroke(); } for (let k = 0; k <= CH; k += 32) { x.beginPath(); x.moveTo(ox, oy + k); x.lineTo(ox + CW, oy + k); x.stroke(); } }
+    else if (kind === 'carpet') { x.fillStyle = '#3a4250'; x.fillRect(ox, oy, CW, CH); }
+    else { x.fillStyle = '#6a6862'; x.fillRect(ox, oy, CW, CH); for (let k = 0; k < 30; k++) { x.fillStyle = 'rgba(0,0,0,0.08)'; x.beginPath(); x.ellipse(ox + R() * CW, oy + R() * CH, 10 + R() * 30, 6 + R() * 16, 0, 0, 6.3); x.fill(); } }
+    x.fillStyle = 'rgba(0,0,0,0.35)'; x.fillRect(ox, oy, CW, 10); x.fillRect(ox, oy + CH - 10, CW, 10); x.fillRect(ox, oy, 10, CH); x.fillRect(ox + CW - 10, oy, 10, CH); };
+  const rect = (i, X, Y, W, H, col) => { const [ox, oy] = at(i); x.fillStyle = col; x.fillRect(ox + X * CW, oy + Y * CH, W * CW, H * CH); };
+  const circ = (i, X, Y, r, col) => { const [ox, oy] = at(i); x.fillStyle = col; x.beginPath(); x.arc(ox + X * CW, oy + Y * CH, r, 0, 6.3); x.fill(); };
+  floor(0, 'wood'); rect(0, 0.06, 0.08, 0.88, 0.22, '#3a2a1c'); for (let k = 0; k < 9; k++) rect(0, 0.1 + R() * 0.75, 0.1 + R() * 0.16, 0.03 + R() * 0.05, 0.02 + R() * 0.03, ['#8a8a8a', '#b03020', '#d0b030'][k % 3]); rect(0, 0.4, 0.55, 0.2, 0.2, '#2a2a2a');
+  floor(1, 'tile'); for (let k = 0; k < 6; k++) { const X = 0.14 + (k % 3) * 0.3, Y = 0.3 + Math.floor(k / 3) * 0.42; rect(1, X - 0.11, Y - 0.17, 0.22, 0.34, '#e8ecec'); circ(1, X, Y, 26, '#7a8a90'); circ(1, X, Y, 18, '#2a3438'); }
+  floor(2, 'wood'); circ(2, 0.55, 0.55, 70, '#7a2a2a'); rect(2, 0.08, 0.1, 0.36, 0.62, '#d8d0c0'); rect(2, 0.1, 0.12, 0.32, 0.12, '#f0ece4'); rect(2, 0.08, 0.36, 0.36, 0.36, '#3a5a7a'); rect(2, 0.74, 0.62, 0.12, 0.18, '#4a3020');
+  floor(3, 'conc'); circ(3, 0.5, 0.52, 30, '#2a4a7a'); circ(3, 0.5, 0.52, 22, '#1a2a3a'); { const [ox, oy] = at(3); x.strokeStyle = 'rgba(160,180,200,0.5)'; x.lineWidth = 3; for (const r of [44, 62, 80]) { x.beginPath(); x.arc(ox + 0.5 * CW, oy + 0.52 * CH, r, 0, 6.3); x.stroke(); } }
+  floor(4, 'carpet'); for (const X of [0.1, 0.56]) { rect(4, X, 0.2, 0.34, 0.26, '#6a5440'); for (let k = 0; k < 4; k++) rect(4, X + 0.02 + R() * 0.26, 0.22 + R() * 0.18, 0.06, 0.08, '#f0ece2'); rect(4, X + 0.12, 0.52, 0.1, 0.12, '#1a1a1a'); }
+  floor(5, 'conc'); for (let k = 0; k < 9; k++) { const X = 0.1 + (k % 3) * 0.16 + R() * 0.03, Y = 0.15 + Math.floor(k / 3) * 0.22; rect(5, X, Y, 0.14, 0.2, ['#8a6a46', '#7a5a3a', '#9a7a52'][k % 3]); rect(5, X + 0.065, Y, 0.01, 0.2, 'rgba(0,0,0,0.3)'); }
+  floor(6, 'wood'); rect(6, 0.32, 0.3, 0.36, 0.4, '#3a2618'); for (const [X, Y] of [[0.24, 0.42], [0.7, 0.42], [0.44, 0.18], [0.44, 0.74]]) rect(6, X, Y, 0.08, 0.12, '#5a3a22');
+  floor(7, 'carpet'); for (const [X, Y] of [[0.22, 0.3], [0.5, 0.62], [0.78, 0.3], [0.22, 0.78]]) { circ(7, X, Y, 26, '#2a1a12'); for (let k = 0; k < 3; k++) { const a = k * 2.1; circ(7, X + Math.cos(a) * 0.11, Y + Math.sin(a) * 0.16, 9, '#5a3a22'); } }
+  for (let i = 0; i < 8; i++) { const [ox, oy] = at(i); const cx = ox + CW / 2, cy = oy + CH / 2;
+    if (i < 4) { y.fillStyle = 'rgba(20,16,14,0.95)'; for (let k = 0; k < 4; k++) { y.save(); y.translate(cx, cy); y.rotate(k * Math.PI / 2 + i * 0.4); y.fillRect(8, -9, 74, 18); y.restore(); } y.beginPath(); y.arc(cx, cy, 14, 0, 6.3); y.fill(); }
+    else { y.strokeStyle = 'rgba(20,16,14,0.9)'; y.lineWidth = 2; y.beginPath(); y.moveTo(cx, oy); y.lineTo(cx, cy); y.stroke(); const g = y.createRadialGradient(cx, cy, 0, cx, cy, 22); g.addColorStop(0, 'rgba(255,240,200,1)'); g.addColorStop(1, 'rgba(255,200,120,0)'); y.fillStyle = g; y.beginPath(); y.arc(cx, cy, 22, 0, 6.3); y.fill(); } }
+  return { back: tex(c), mid: tex(m) };
+}
+
 // ------------------------------------------------------------------ shops
 // back wall (512 x 256) and a midground layer with alpha (counters, aisles, customers)
 const SHOPS = {
@@ -473,7 +500,27 @@ export function makeFacadeKit(scene, opts) {
   const wins = [];
   kit.screens = 0; kit.screenAt = [];
   kit.window = (p, ry, lit) => wins.push({ p, ry, lit });
+  const skies = [];
+  kit.skylight = (p, ry) => skies.push({ p, ry });   // p = centre of the glass (top of the frame), long axis along x when ry = 0
+  const buildSkylights = () => {
+    if (!skies.length) return;
+    const A = skylightAtlas(), SW = 3.0, SD = 2.0;
+    const im = interiorMaterial({ back: A.back, mid: A.mid, cells: [4, 2], w: SW, h: SD, depth: 3.2, midZ: 0.3, wall: 0x6a6258, floorA: 0x6a6258, light: new THREE.Color(1.5, 1.1, 0.7), shop: false });
+    kit.mats.push(im);
+    const n = skies.length, IM = new THREE.InstancedMesh(new THREE.PlaneGeometry(SW, SD), im, n), room = new Float32Array(n * 4);
+    let ks = 2114; const kr = () => { ks = (ks * 16807) % 2147483647; return (ks - 1) / 2147483646; };
+    const qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), qy = new THREE.Quaternion();
+    skies.forEach((sk, i) => {
+      qy.setFromAxisAngle(new THREE.Vector3(0, 1, 0), sk.ry); Q.copy(qy).multiply(qx);
+      M4.compose(sk.p, Q, S3.set(1, 1, 1)); IM.setMatrixAt(i, M4);
+      const lit = kr() < 0.7;
+      room.set([Math.floor(kr() * 8), lit ? 0.6 + kr() * 0.4 : 0, kr(), lit ? Math.floor(kr() * 8) : -1], i * 4);
+    });
+    IM.geometry.setAttribute('aRoom', new THREE.InstancedBufferAttribute(room, 4));
+    IM.frustumCulled = false; scene.add(IM); kit.skylightIM = IM;
+  };
   kit.finish = () => {
+    buildSkylights();
     const A = apartmentAtlas(), WW = 1.15, WH = 1.6;
     const im = interiorMaterial({ back: A.back, mid: A.mid, cells: [4, 2], w: WW, h: WH, depth: 3.0, wall: 0x7a6a58, floorA: 0x5a4030, light: new THREE.Color(1.0, 0.72, 0.46), shop: false, screen: screenAtlas() });
     let sseed = 7781; const srnd = () => { sseed = (sseed * 16807) % 2147483647; return (sseed - 1) / 2147483646; };
