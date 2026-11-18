@@ -55,7 +55,7 @@ function voxelize(root) {
   });
   if (!tris.length) return null;
   const size = box.getSize(new THREE.Vector3()), maxD = Math.max(size.x, size.y, size.z);
-  let cell = THREE.MathUtils.clamp(maxD / 16, 0.06, 0.12);  // fine enough that the object keeps its silhouette
+  let cell = THREE.MathUtils.clamp(maxD / 9, 0.12, 0.18);   // big enough to read as cubes from the game camera, small enough to keep the shape
   const col = new THREE.Color(), tc = new THREE.Color();
   for (let attempt = 0; attempt < 5; attempt++) {
     const NX = Math.max(1, Math.ceil(size.x / cell) + 1), NY = Math.max(1, Math.ceil(size.y / cell) + 1);
@@ -89,7 +89,7 @@ function voxelize(root) {
       Cl[i * 3] = a[0] / a[3]; Cl[i * 3 + 1] = a[1] / a[3]; Cl[i * 3 + 2] = a[2] / a[3]; i++;
     }
     const Mt = new Float32Array(n * 16), m4 = new THREE.Matrix4();
-    for (let j = 0; j < n; j++) { m4.makeScale(cell * 0.9, cell * 0.9, cell * 0.9).setPosition(P[j * 3], P[j * 3 + 1], P[j * 3 + 2]); m4.toArray(Mt, j * 16); }
+    for (let j = 0; j < n; j++) { m4.makeScale(cell * 0.84, cell * 0.84, cell * 0.84).setPosition(P[j * 3], P[j * 3 + 1], P[j * 3 + 2]); m4.toArray(Mt, j * 16); }
     return { n, P, Cl, Mt, cell, minY: box.min.y, maxY: box.max.y, rad: Math.max(size.x, size.z) / 2 };
   }
   return null;
@@ -122,7 +122,7 @@ void main(){
   vec3 a = abs(vP);
   float mx = max(a.x, max(a.y, a.z)), mn = min(a.x, min(a.y, a.z)), mid = a.x + a.y + a.z - mx - mn;
   float px = fwidth(vP.x) + fwidth(vP.y) + fwidth(vP.z);            // cube-local units per pixel
-  float edge = smoothstep(0.34, 0.46, mid) * (1.0 - smoothstep(0.08, 0.22, px)) + 0.2 * smoothstep(0.08, 0.22, px);
+  float edge = smoothstep(0.34, 0.46, mid) * (1.0 - smoothstep(0.14, 0.4, px)) + 0.3 * smoothstep(0.14, 0.4, px);
   vec3 vio = vec3(0.61, 0.48, 1.0);
   // the object's colour, lifted so it reads as light, never as a dark lump
   vec3 body = vCol * 1.3 + vio * 0.06 + 0.008;
