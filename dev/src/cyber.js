@@ -796,28 +796,69 @@ export function makeCyber(scene, level, wet, world) {
       g.userData.mark = mark;
       g.userData = { ...g.userData, kind: 'spinner', pool }; return mergeByMaterial(g, [mark]);
     };
-    for (let i = 0; i < 3; i++) { const d = mkDrone(i % 2 ? PINK : CYAN); d.visible = false; scene.add(d); fliers.push({ o: d, on: false, t: 0, v: new THREE.Vector3(), cd: R() * 3 }); }
-    for (let i = 0; i < 2; i++) { const s = mkSpinner(false); s.visible = false; s.userData.pool.visible = false; scene.add(s); fliers.push({ o: s, on: false, t: 0, v: new THREE.Vector3(), cd: 4 + R() * 6 }); }
+    // ---- height cues: from straight above a car at 8 m looks like it's on the street, so each flier hangs three things below it
+    //  1. its own light pool on the road with its shadow inside it, straight below (parallax puts a gap between car and marks on screen)
+    //  2. a cone of rain lit by its underlights, from its belly to the street (vertical lines splay in this camera, so it reads as a tether to the ground)
+    //  3. downwash: rings of disturbed rain spreading out on the street directly under it
+    const shadowMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uA: { value: 0.5 } },
+      vertexShader: 'varying vec2 vU; void main(){ vU = uv * 2.0 - 1.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform float uA; varying vec2 vU; void main(){ vec2 q = abs(vU) - vec2(0.55); float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0); float a = 1.0 - smoothstep(-0.1, 0.45, d); gl_FragColor = vec4(0.0, 0.0, 0.01, a * uA); }' });
+    const beamMat = (col, k) => { const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, uniforms: { uTime: { value: 0 }, uC: { value: col.clone().multiplyScalar(k) } },
+      vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      // its underlights catch the rain below it: a cone of lit drops falling from the hull to the street
+      fragmentShader: 'uniform float uTime; uniform vec3 uC; varying vec2 vU; float hs(float n){ return fract(sin(n) * 43758.5453); } void main(){ float col = floor(vU.x * 56.0); float r = hs(col); float d = fract(vU.y * (10.0 + r * 8.0) + uTime * (5.0 + r * 3.0) + r * 7.0); float streak = smoothstep(0.78, 0.95, d) * step(0.45, r); float fade = smoothstep(0.0, 0.12, vU.y) * (0.35 + 0.65 * vU.y); gl_FragColor = vec4(uC * (0.22 + 2.6 * streak) * fade, 1.0); }' }); C.mats.push(m); return m; };
+    // downwash: soft, thin ripples (never crisp rings: crisp rings on the floor mean "enemy" or "liftable" in this game)
+    const ringGeo = new THREE.RingGeometry(0.8, 1.0, 40, 1); ringGeo.rotateX(-Math.PI / 2);
+    const washMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { opacity: { value: 0 } },
+      vertexShader: 'varying float vR; void main(){ vR = length(position.xz); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform float opacity; varying float vR; void main(){ float a = smoothstep(0.8, 0.93, vR) * (1.0 - smoothstep(0.93, 1.0, vR)); gl_FragColor = vec4(vec3(0.75, 0.96, 1.0) * a * opacity, 1.0); }' });
+    const addAir = (g, kind, col) => {
+      const big = kind === 'spinner';
+      const sh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), shadowMat.clone()); sh.rotation.x = -Math.PI / 2; sh.renderOrder = 3; sh.visible = false; scene.add(sh); wet.hide.push(sh);
+      sh.material.uniforms.uA.value = big ? 0.7 : 0.5; sh.scale.set(big ? 2.2 : 0.8, big ? 4.6 : 0.8, 1);
+      // the column hangs from the belly: top at y 0, bottom at y -1, scaled to the altitude each frame
+      const cg = new THREE.CylinderGeometry(big ? 0.6 : 0.12, big ? 1.4 : 0.4, 1, 24, 1, true); cg.translate(0, -0.5, 0);
+      const beam = new THREE.Mesh(cg, beamMat(col, big ? 0.1 : 0.07)); beam.renderOrder = 4; g.add(beam);
+      const rings = []; for (let k = 0; k < (big ? 3 : 2); k++) { const r = new THREE.Mesh(ringGeo, washMat.clone()); r.visible = false; scene.add(r); wet.hide.push(r); rings.push(r); }
+      Object.assign(g.userData, { shadow: sh, beam, rings, big });
+    };
+    for (let i = 0; i < 3; i++) { const d = mkDrone(i % 2 ? PINK : CYAN); addAir(d, 'drone', i % 2 ? PINK : CYAN); d.visible = false; scene.add(d); fliers.push({ o: d, on: false, t: 0, v: new THREE.Vector3(), cd: R() * 3 }); }
+    for (let i = 0; i < 2; i++) { const s = mkSpinner(false); addAir(s, 'spinner', CYAN); s.visible = false; s.userData.pool.visible = false; scene.add(s); fliers.push({ o: s, on: false, t: 0, v: new THREE.Vector3(), cd: 4 + R() * 6 }); }
   }
+  // they fly the streets (never through a building): along the long axis of the street she's in, offset across it
+  const corridor = (center) => {
+    let r = allRects.find(q => center.x >= q.x0 && center.x <= q.x1 && center.z >= q.z0 && center.z <= q.z1);
+    if (!r) { let bd = 1e9; for (const q of allRects) { const d = Math.hypot(Math.max(q.x0 - center.x, 0, center.x - q.x1), Math.max(q.z0 - center.z, 0, center.z - q.z1)); if (d < bd) { bd = d; r = q; } } }
+    return r;
+  };
+  const showAir = (u, on) => { u.shadow.visible = on; for (const r of u.rings) r.visible = on; if (u.pool) u.pool.visible = on; };
   const flyUpdate = (dt, center) => {
     const calm = !G.enemies || !G.enemies.some(e => e.alive && !e.dead);
+    const t = G.rt || 0;
     for (const f of fliers) {
       const o = f.o, u = o.userData;
       if (!f.on) {
         f.cd -= dt; if (f.cd > 0) continue;
-        if (u.kind === 'spinner' && !calm) { f.cd = 3; continue; }
-        // enter from beyond the view, cross it, leave
-        const ang = u.kind === 'drone' ? Math.random() * Math.PI * 2 : (Math.random() < 0.5 ? 0 : Math.PI);
-        const dx = Math.sin(ang), dz = Math.cos(ang), side = u.kind === 'drone' ? (Math.random() - 0.5) * 9 : (Math.random() < 0.5 ? -1 : 1) * (2.5 + Math.random() * 2.5);   // a portrait frame is narrow: height magnifies their offset ~1.7x
-        o.position.set(center.x - dx * 26 + dz * side, u.kind === 'drone' ? 6.2 + Math.random() : 7.2 + Math.random() * 1.2, center.z - dz * 26 - dx * side);
-        f.v.set(dx, 0, dz).multiplyScalar(u.kind === 'drone' ? 6 + Math.random() * 3 : 13 + Math.random() * 3);
-        o.rotation.set(0, ang, 0); f.on = true; f.t = 0; o.visible = true; if (u.pool) u.pool.visible = true;
+        const r = corridor(center); if (!r) { f.cd = 2; continue; }
+        const alongZ = (r.z1 - r.z0) >= (r.x1 - r.x0), dir = Math.random() < 0.5 ? 1 : -1;
+        const lo = alongZ ? Math.max(r.x0 + 1.2, center.x - 5) : Math.max(r.z0 + 1.2, center.z - 5), hi = alongZ ? Math.min(r.x1 - 1.2, center.x + 5) : Math.min(r.z1 - 1.2, center.z + 3);
+        const lat = hi > lo ? lo + Math.random() * (hi - lo) : (alongZ ? (r.x0 + r.x1) / 2 : (r.z0 + r.z1) / 2);
+        const alt = u.kind === 'drone' ? 5.8 + Math.random() : 7.2 + Math.random() * 1.2;
+        if (alongZ) { o.position.set(lat, alt, center.z - dir * 26); f.v.set(0, 0, dir); o.rotation.set(0, dir > 0 ? 0 : Math.PI, 0); }
+        else { o.position.set(center.x - dir * 22, alt, lat); f.v.set(dir, 0, 0); o.rotation.set(0, dir > 0 ? Math.PI / 2 : -Math.PI / 2, 0); }
+        f.v.multiplyScalar(u.kind === 'drone' ? 6 + Math.random() * 3 : (calm ? 13 : 11) + Math.random() * 3);
+        f.on = true; f.t = 0; o.visible = true; showAir(u, true);
         continue;
       }
       f.t += dt; o.position.addScaledVector(f.v, dt);
       if (u.kind === 'drone') { o.position.y += Math.sin(f.t * 3) * 0.004; const on = Math.floor(f.t * 2) % 2 === 0; u.led[0].visible = on; u.led[1].visible = !on; }
-      else { o.rotation.z = Math.sin(f.t * 1.3) * 0.08; u.pool.position.set(o.position.x + f.v.x * 0.22, 0.02, o.position.z + f.v.z * 0.22); u.mark.visible = (f.t % 1) < 0.12; }
-      if (Math.hypot(o.position.x - center.x, o.position.z - center.z) > 32 && f.t > 1) { f.on = false; o.visible = false; if (u.pool) u.pool.visible = false; f.cd = u.kind === 'drone' ? 1 + Math.random() * 4 : 8 + Math.random() * 6; }
+      else { o.rotation.z = Math.sin(f.t * 1.3) * 0.08; u.pool.position.set(o.position.x, 0.02, o.position.z); u.mark.visible = (f.t % 1) < 0.12; }
+      // height cues follow it
+      const h = o.position.y;
+      u.shadow.position.set(o.position.x, 0.023, o.position.z);   // straight below, inside its own light pool: the camera's parallax separates car from marks u.shadow.rotation.z = -o.rotation.y;
+      u.beam.scale.set(1, h - (u.big ? 0.35 : 0.3), 1); u.beam.position.y = u.big ? -0.35 : -0.3; u.beam.material.uniforms.uTime.value = t;
+      u.rings.forEach((rg, k) => { const ph = (f.t * (u.big ? 1.3 : 1.8) + k / u.rings.length) % 1, rad = (u.big ? 0.8 : 0.3) + ph * (u.big ? 3.4 : 1.4); rg.position.set(o.position.x, 0.024, o.position.z); rg.scale.setScalar(rad); rg.material.uniforms.opacity.value = (1 - ph) * (1 - ph) * (u.big ? 0.22 : 0.14); });
+      if (Math.hypot(o.position.x - center.x, o.position.z - center.z) > 32 && f.t > 1) { f.on = false; o.visible = false; showAir(u, false); f.cd = u.kind === 'drone' ? 1 + Math.random() * 4 : (calm ? 6 + Math.random() * 4 : 9 + Math.random() * 6); }
     }
   };
 
