@@ -6,6 +6,7 @@
 //    leaving jagged remains and shards that fall, bounce and glint on the pavement.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { drawLedger, drawTally, ledgerFit } from './ledger.js';
 
 function cv(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
 function tex(c, srgb = true) { const t = new THREE.CanvasTexture(c); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
@@ -39,10 +40,29 @@ const INT_FS = /* glsl */`
 #include <fog_pars_fragment>
 uniform sampler2D tBack; uniform sampler2D tMid; uniform vec2 uCells; uniform vec2 uSize; uniform float uDepth;
 uniform vec3 uWall; uniform vec3 uFloorA; uniform vec3 uFloorB; uniform vec3 uLight; uniform float uShop; uniform float uTime; uniform float uMidZ;
+uniform sampler2D tScreen;
 varying vec3 vP; varying vec3 vD; varying vec4 vR;
 vec2 cellUV(vec2 uv, float idx) { float cx = mod(idx, uCells.x); float cy = floor(idx / uCells.x); return (vec2(cx, uCells.y - 1.0 - cy) + clamp(uv, 0.003, 0.997)) / uCells; }
 float hsh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
+  // ad screens (aRoom.y < 0): a flat emissive panel on the glass, a 4-frame flipbook every 1.5 s
+  if (vR.y < -0.5) {
+    vec2 uv = vP.xy / uSize + 0.5;
+    float mn = floor(uTime / 60.0), ph = fract(uTime / 60.0), seam = step(hsh(vec2(mn, vR.z * 97.0)), 0.02) * step(abs(ph - fract(vR.z * 13.0)), 0.003);
+    float band = seam * step(abs(uv.y - fract(vR.z * 7.0) * 0.7 - 0.15), 0.1);
+    uv.x = fract(uv.x + band * 0.23);
+    float fr = mod(floor(uTime / 0.375 + vR.z * 4.0), 4.0);
+    vec3 sc = texture2D(tScreen, (vec2(vR.x, 3.0 - fr) + clamp(uv, 0.004, 0.996)) / vec2(8.0, 4.0)).rgb;
+    sc *= 0.8 + 0.2 * step(0.28, fract(uv.x * 64.0)) * step(0.28, fract(uv.y * 89.0));
+    sc *= 0.92 + 0.08 * sin(uv.y * 300.0 - uTime * 12.0);
+    vec3 col = sc * 1.2 * (1.0 - 0.25 * smoothstep(0.42, 0.5, max(abs(uv.x - 0.5), abs(uv.y - 0.5))));
+    col = mix(col, vec3(1.0, 0.95, 0.9) * (0.6 + 0.4 * hsh(floor(uv * vec2(40.0, 6.0)) + uTime)), band * 0.7);
+    gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+    #include <fog_fragment>
+    return;
+  }
   vec3 d = normalize(vD); d.z = min(d.z, -0.002);
   vec3 hs = vec3(uSize * 0.5, uDepth);
   vec3 p = vP;
@@ -99,10 +119,49 @@ function interiorMaterial(o) {
       tBack: { value: o.back }, tMid: { value: o.mid }, uCells: { value: new THREE.Vector2(...(o.cells || [1, 1])) },
       uSize: { value: new THREE.Vector2(o.w, o.h) }, uDepth: { value: o.depth }, uMidZ: { value: o.midZ ?? 0.35 },
       uWall: { value: new THREE.Color(o.wall) }, uFloorA: { value: new THREE.Color(o.floorA) }, uFloorB: { value: new THREE.Color(o.floorB || o.floorA) },
-      uLight: { value: o.light.clone() }, uShop: { value: o.shop ? 1 : 0 }, uTime: { value: 0 }, uRoom: { value: new THREE.Vector4(0, 1, 0.5, o.mid ? 0 : -1) },
+      uLight: { value: o.light.clone() }, uShop: { value: o.shop ? 1 : 0 }, uTime: { value: 0 }, tScreen: { value: o.screen || null }, uRoom: { value: new THREE.Vector4(0, 1, 0.5, o.mid ? 0 : -1) },
     }]),
     vertexShader: INT_VS, fragmentShader: INT_FS,
   });
+}
+
+// ------------------------------------------------------------------ ad screen atlas: 8 ads x 4 flipbook frames, cells 128 x 178 (window aspect)
+// city colours only (cyan / pink / white); 3 and 6 are Census PSAs in amber LEDGER. Never violet: that is hers.
+export const SCREEN_ADS = { city: [0, 1, 2, 4, 5, 7], census: [3, 6] };
+function screenAtlas() {
+  const W = 128, H = 178, [c, x] = cv(W * 8, H * 4);
+  const CY = '#19d3e6', PK = '#ff2e7a', WH = '#dcebff', AM = '#ff9a1f';
+  const bebas = (px) => `${px}px 'Bebas Neue', Impact, 'Arial Narrow', sans-serif`;
+  const txt = (t, X, Y, px, col, al = 'center') => { x.font = bebas(px); x.textAlign = al; x.textBaseline = 'alphabetic'; x.fillStyle = col; x.fillText(t, X, Y); };
+  const bg = (a, b) => { const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, a); g.addColorStop(1, b); x.fillStyle = g; x.fillRect(0, 0, W, H); };
+  const ads = [
+    (f) => { bg('#2a0614', '#08020a'); x.strokeStyle = PK; x.lineWidth = 5; x.beginPath(); x.arc(64, 96, 34, 0, Math.PI); x.stroke(); x.fillStyle = PK; x.fillRect(26, 92, 76, 5);
+      x.strokeStyle = WH; x.lineWidth = 2; for (let k = 0; k < 3; k++) { x.beginPath(); const yy = 84 - ((f * 6 + k * 9) % 26); x.moveTo(48 + k * 16, yy); x.bezierCurveTo(42 + k * 16, yy - 8, 56 + k * 16, yy - 14, 48 + k * 16, yy - 22); x.stroke(); }
+      txt('NOODLE', 64, 40, 34, PK); txt(f % 2 ? '24 H' : 'OPEN', 64, 162, 30, f % 2 ? CY : WH); },
+    (f) => { bg('#04101e', '#020408'); txt('HALDEN', 64, 38, 36, WH); x.fillStyle = CY; for (let k = 0; k < 5; k++) { const hh = 12 + k * 14 + (k <= f + 1 ? 10 : 0); x.fillRect(16 + k * 21, 140 - hh, 15, hh); }
+      x.fillStyle = WH; x.fillRect(12, 142, 104, 2); x.font = '9px Inter, sans-serif'; x.textAlign = 'center'; x.fillText('YOUR FUTURE, SECURED', 64, 162); },
+    (f) => { bg('#03303a', '#011014'); x.fillStyle = CY; x.beginPath(); x.roundRect(40, 50, 48, 86, 10); x.fill(); x.fillStyle = '#011014'; x.fillRect(40, 80, 48, 22); txt('KAIRO', 64, 98, 22, CY);
+      x.strokeStyle = WH; x.lineWidth = 1.5; for (let k = 0; k < 8; k++) { const bx = 14 + ((k * 37) % 100), by = 150 - ((f * 22 + k * 19) % 140); x.beginPath(); x.arc(bx, by, 2 + (k % 3), 0, 6.3); x.stroke(); }
+      txt('SODA', 64, 30, 30, WH); txt('ICE COLD', 64, 166, 22, CY); },
+    (f) => { x.fillStyle = '#0c0602'; x.fillRect(0, 0, W, H); x.strokeStyle = AM; x.lineWidth = 2; if (f % 2 === 0) x.strokeRect(5, 5, W - 10, H - 10);
+      drawLedger(x, 'BE', 64, 26, 34, AM, { ghost: 0.1, align: 'center' }); drawLedger(x, 'COUNTED', 64, 72, ledgerFit('COUNTED', 112, 22), AM, { ghost: 0.1, align: 'center' });
+      x.fillStyle = AM; for (let k = 0; k <= f; k++) { const bx = 22 + k * 22; for (let j = 0; j < 4; j++) x.fillRect(bx + j * 4, 112, 2, 22); x.save(); x.translate(bx + 7, 123); x.rotate(-0.5); x.fillRect(-11, -1, 22, 2); x.restore(); }
+      drawLedger(x, 'ORD 7781', 64, 152, 11, AM, { ghost: 0.1, align: 'center' }); },
+    (f) => { bg('#1c0414', '#030c18'); x.lineWidth = 3; for (const [col, off, amp] of [[PK, 0, 16], [CY, 1.7, 11]]) { x.strokeStyle = col; x.beginPath(); for (let X = 0; X <= W; X += 4) { const Y = 92 + Math.sin(X * 0.07 + f * 1.57 + off) * amp; X ? x.lineTo(X, Y) : x.moveTo(X, Y); } x.stroke(); }
+      txt('SYNTH', 64, 42, 36, WH); txt('SLEEP', 64, 150, 36, f % 2 ? PK : CY); },
+    (f) => { x.fillStyle = '#020a0c'; x.fillRect(0, 0, W, H); txt('TRAM 7', 64, 30, 28, CY); x.fillStyle = CY; x.fillRect(10, 36, 108, 2);
+      x.font = 'bold 11px "Courier New", monospace'; x.textAlign = 'left'; const rows = [['PIER 9', '02'], ['MARKET', '05'], ['RAIL YD', '09'], ['FERRY', '14']];
+      rows.forEach(([a, b], k) => { x.fillStyle = k === f ? WH : CY; x.fillText(a, 12, 62 + k * 24); x.textAlign = 'right'; x.fillText(b + ' MIN', 116, 62 + k * 24); x.textAlign = 'left'; });
+      if (f % 2) { x.fillStyle = WH; x.fillRect(12, 156, 8, 12); } },
+    (f) => { x.fillStyle = '#0c0602'; x.fillRect(0, 0, W, H); x.strokeStyle = AM; x.lineWidth = 3; x.beginPath(); x.arc(64, 56, 26, 0, 6.3); x.stroke(); x.beginPath(); x.moveTo(64, 56); const a = -1.2 + f * 0.6; x.lineTo(64 + Math.cos(a) * 20, 56 + Math.sin(a) * 20); x.stroke();
+      drawLedger(x, 'REPORT', 64, 98, ledgerFit('REPORT', 108, 18), AM, { ghost: 0.1, align: 'center' }); drawLedger(x, 'THE UNLISTED', 64, 124, ledgerFit('THE UNLISTED', 112, 12), AM, { ghost: 0.1, align: 'center' });
+      x.globalAlpha = 0.7; drawTally(x, '2114', 40, 150, 12, AM); x.globalAlpha = 1; },
+    (f) => { bg('#22020c', '#060106'); x.fillStyle = PK; x.beginPath(); x.arc(64, 78, 30, 0, 6.3); x.fill(); x.fillRect(30, 110, 68, 40); x.fillStyle = '#060106'; x.fillRect(34 + (f * 13) % 50, 60, 22, 4);
+      for (let k = 0; k < 3; k++) { x.fillStyle = k % 2 ? CY : WH; x.fillRect(0, 40 + ((f * 29 + k * 47) % 120), W, 2 + k); }
+      txt('VOX', 52, 34, 32, WH); if (f % 2 === 0) { x.fillStyle = '#ff2a2a'; x.beginPath(); x.arc(92, 24, 5, 0, 6.3); x.fill(); } txt('LIVE', 64, 170, 26, PK); },
+  ];
+  for (let a = 0; a < 8; a++) for (let f = 0; f < 4; f++) { x.save(); x.translate(a * W, f * H); x.beginPath(); x.rect(0, 0, W, H); x.clip(); ads[a](f); x.restore(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
 
 // ------------------------------------------------------------------ apartment room atlas (4 x 2 cells) + curtains/people (4 x 2)
@@ -402,10 +461,12 @@ export function makeFacadeKit(scene, opts) {
 
   // ---------------- upper windows: interior mapped, instanced
   const wins = [];
+  kit.screens = 0; kit.screenAt = [];
   kit.window = (p, ry, lit) => wins.push({ p, ry, lit });
   kit.finish = () => {
     const A = apartmentAtlas(), WW = 1.15, WH = 1.6;
-    const im = interiorMaterial({ back: A.back, mid: A.mid, cells: [4, 2], w: WW, h: WH, depth: 3.0, wall: 0x7a6a58, floorA: 0x5a4030, light: new THREE.Color(1.0, 0.72, 0.46), shop: false });
+    const im = interiorMaterial({ back: A.back, mid: A.mid, cells: [4, 2], w: WW, h: WH, depth: 3.0, wall: 0x7a6a58, floorA: 0x5a4030, light: new THREE.Color(1.0, 0.72, 0.46), shop: false, screen: screenAtlas() });
+    let sseed = 7781; const srnd = () => { sseed = (sseed * 16807) % 2147483647; return (sseed - 1) / 2147483646; };
     kit.mats.push(im);
     const n = wins.length;
     const inside = new THREE.InstancedMesh(new THREE.PlaneGeometry(WW, WH), im, n);
@@ -415,8 +476,10 @@ export function makeFacadeKit(scene, opts) {
     const tb = (x, y, z, w, h, d) => { const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z); tp.push(g); };
     tb(0, WH / 2 + 0.06, 0.05, WW + 0.3, 0.12, 0.14); tb(0, -WH / 2 - 0.04, 0.09, WW + 0.42, 0.07, 0.24);
     tb(-WW / 2 - 0.06, 0, 0.05, 0.12, WH + 0.1, 0.12); tb(WW / 2 + 0.06, 0, 0.05, 0.12, WH + 0.1, 0.12);
-    tb(0, 0, 0.1, 0.045, WH, 0.04); tb(0, WH * 0.18, 0.1, WW, 0.04, 0.04);
     const trimIM = new THREE.InstancedMesh(mergeGeometries(tp), frameMat, n);
+    // mullion + transom: not on ad screens (they'd cut the picture in four)
+    tp.length = 0; tb(0, 0, 0.1, 0.045, WH, 0.04); tb(0, WH * 0.18, 0.1, WW, 0.04, 0.04);
+    const barIM = new THREE.InstancedMesh(mergeGeometries(tp), frameMat, n); let nb = 0;
     wins.forEach((w, i) => {
       const nn = new THREE.Vector3(Math.sin(w.ry), 0, Math.cos(w.ry));
       Q.setFromAxisAngle(UP, w.ry);
@@ -424,11 +487,15 @@ export function makeFacadeKit(scene, opts) {
       M4.compose(w.p.clone(), Q, S3.set(1, 1, 1)); trimIM.setMatrixAt(i, M4);
       const mid = rnd() < 0.55 ? Math.floor(rnd() * 3) : rnd() < 0.18 ? 3 + Math.floor(rnd() * 2) : rnd() < 0.3 ? 5 : rnd() < 0.3 ? 7 : -1;
       room.set([Math.floor(rnd() * 8), w.lit ? 0.45 + rnd() * 0.55 : 0, rnd(), mid], i * 4);
+      // about one upper window in eight is an ad screen (1 in 5 of those a Census PSA)
+      if (srnd() < 0.125) { const L = srnd() < 0.2 ? SCREEN_ADS.census : SCREEN_ADS.city; room.set([L[Math.floor(srnd() * L.length)], -1, srnd(), -1], i * 4); kit.screens++; if (kit.screenAt.length < 80) kit.screenAt.push([+w.p.x.toFixed(1), +w.p.y.toFixed(1), +w.p.z.toFixed(1), +w.ry.toFixed(2)]); }
+      else barIM.setMatrixAt(nb++, M4);
       pane(w.p.clone().addScaledVector(nn, 0.07), w.ry, WW - 0.02, WH - 0.02, 'win');
     });
     inside.geometry.setAttribute('aRoom', new THREE.InstancedBufferAttribute(room, 4));
     inside.frustumCulled = false; trimIM.castShadow = false; trimIM.receiveShadow = true;
-    scene.add(inside); scene.add(trimIM);
+    barIM.count = nb; barIM.receiveShadow = true;
+    scene.add(inside); scene.add(trimIM); scene.add(barIM);
     glassIM.instanceMatrix.needsUpdate = true;
     glassIM.computeBoundingSphere();
   };

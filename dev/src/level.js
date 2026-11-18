@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { G, GRP, ALL, rand } from './state.js';
 import { A } from './assets.js';
 import { makeFacadeKit } from './facade.js';
@@ -791,10 +792,39 @@ function buildPier9(C) {
     mesh(new THREE.BoxGeometry(0.02, 0.16, 0.4), glowMat(1.8, 1.9, 2.2), x + Math.sign(-x) * 0.11, 3.5, z, 0, false);
     addSpot(x - Math.sign(x) * 0.6, 3.3, z, 0xd8f2ff, 14, 10, 1.7, flick);
   }
-  L.vents.push([-3.8, -76.2], [3.9, -69.3], [0.6, -90.1]);
+  L.vents.push([-3.8, -76.2], [3.9, -69.3], [0.6, -90.1], [-4.4, 22.5], [5.2, -6.5]);
   const grateTex = decalTexture((x, w, h) => { x.fillStyle = '#26282c'; x.fillRect(0, 0, w, h); x.fillStyle = '#060607'; for (let i = 8; i < w - 8; i += 14) x.fillRect(i, 8, 7, h - 16); x.strokeStyle = '#3a3d42'; x.lineWidth = 6; x.strokeRect(3, 3, w - 6, h - 6); }, 128, 128);
   const grateMat = new THREE.MeshStandardMaterial({ map: grateTex, roughness: 0.45, metalness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 });
   for (const [x, z] of L.vents) { const g = mesh(new THREE.PlaneGeometry(0.9, 0.9), grateMat, x, 0.006, z, 0, false); g.rotation.x = -Math.PI / 2; }
+  // neon steam (addendum #19): each vent's steam takes a city colour, with a faint additive light shaft over the grate
+  const VCOL = [[0.1, 0.83, 0.9], [1.0, 0.18, 0.48]];
+  L.ventCol = L.vents.map((v, i) => VCOL[(i * 7 + 3) % 5 < 2 ? 1 : 0]);
+  {
+    const gs = [];
+    L.vents.forEach(([x, z], i) => {
+      const c = L.ventCol[i];
+      const g = new THREE.CylinderGeometry(0.85, 0.42, 3.0, 14, 1, true); g.translate(x, 1.5, z);
+      const d = new THREE.CircleGeometry(0.55, 14); d.rotateX(-Math.PI / 2); d.translate(x, 0.012, z);
+      for (const q of [g, d]) { const n = q.attributes.position.count, col = new Float32Array(n * 3), k = new Float32Array(n), ac = new Float32Array(n * 3); for (let j = 0; j < n; j++) { col.set(c, j * 3); ac.set([x, 0, z], j * 3); k[j] = q === d ? 1 : 0; } q.setAttribute('color', new THREE.BufferAttribute(col, 3)); q.setAttribute('aDisc', new THREE.BufferAttribute(k, 1)); q.setAttribute('aC', new THREE.BufferAttribute(ac, 3)); delete q.attributes.normal; gs.push(q.index ? q.toNonIndexed() : q); }
+    });
+    const shaftMat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false, vertexColors: true,
+      uniforms: { uT: { value: 0 } },
+      vertexShader: 'attribute float aDisc; attribute vec3 aC; varying vec3 vC; varying float vY; varying float vD; varying vec3 vW; varying vec3 vN; varying vec2 vUv; void main(){ vC = color; vD = aDisc; vY = position.y; vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vN = vec3(position.x - aC.x, 0.0, position.z - aC.z); gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: `uniform float uT; varying vec3 vC; varying float vY; varying float vD; varying vec3 vW; varying vec3 vN; varying vec2 vUv;
+        float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float n2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + 1.0), f.x), f.y); }
+        void main(){
+          if (vD > 0.5) { float r = 1.0 - clamp(length(vUv - 0.5) * 2.0, 0.0, 1.0); gl_FragColor = vec4(vC * 0.16 * r * r * (0.75 + 0.25 * sin(uT * 3.0 + vW.x)), 1.0); return; }
+          float up = clamp(vY / 3.0, 0.0, 1.0), fall = (1.0 - up) * (1.0 - up) * smoothstep(0.0, 0.25, up);
+          float face = abs(dot(normalize(vN), normalize(cameraPosition - vW)));
+          float wisp = n2(vec2(atan(vN.z, vN.x) * 2.0, vY * 1.6 - uT * 0.9)) * 0.7 + 0.3;
+          gl_FragColor = vec4(vC * fall * wisp * face * face * 0.09, 1.0);
+        }`,
+    });
+    const shafts = new THREE.Mesh(mergeGeometries(gs, false), shaftMat); shafts.renderOrder = 6; shafts.frustumCulled = false; scene.add(shafts);
+    L.noBatch.push(shafts); L.ventShafts = shaftMat;
+  }
   // her mark, and a way to Moth's
   decal(decalTexture((x, w, h) => { x.strokeStyle = '#9b6bff'; x.lineWidth = 16; x.shadowColor = '#9b6bff'; x.shadowBlur = 12; x.beginPath(); x.arc(w / 2, h / 2, 80, 0, 6.28); x.stroke(); x.beginPath(); x.moveTo(w / 2 - 110, h / 2 + 110); x.lineTo(w / 2 + 110, h / 2 - 110); x.stroke(); }, 512, 256), 3.2, 1.6, -4.58, 2.4, -76, Math.PI / 2, 0.85);
   decal(decalTexture((x, w, h) => { x.font = '900 72px Inter, Arial'; x.fillStyle = '#e9e4da'; x.textAlign = 'center'; x.globalAlpha = 0.85; x.fillText('COUNT ME OUT', w / 2, h / 2 + 24); }, 512, 128), 3.4, 0.85, 4.58, 2.1, -71, -Math.PI / 2, 0.8);
@@ -860,7 +890,8 @@ function buildPier9(C) {
   buildExpansion(C, { metal, rusty, stat, statCyl, mesh, floor, decal, glowMat, conc, lip, yellow, cont, contMats, contGeo, counterMat, canvasCols, lanternMat, redLights, haloTex, coneMat, lampSrc, crateGeo, boxMats, iceMat });
   buildLandmarks(C, { metal, stat, statCyl, mesh, glowMat });
   L.updateExtra = (dt, center) => {
-    if (G.fx) for (const [vx, vz] of L.vents) if (Math.abs(vz - center.z) < 22 && Math.random() < 0.55) G.fx.smoke.emit(vx + rand(-0.3, 0.3), 0.1, vz + rand(-0.3, 0.3), rand(-0.15, 0.15), rand(0.8, 1.6), rand(-0.15, 0.15), 0.32, 0.33, 0.37, rand(1.2, 2.2), 0.18, 0.9, -0.15, 0.5, 0.55);
+    if (G.fx) L.vents.forEach(([vx, vz], i) => { if (Math.abs(vz - center.z) < 22 && Math.abs(vx - center.x) < 28 && Math.random() < 0.55) { const c = L.ventCol[i], lo = Math.random() < 0.6; G.fx.smoke.emit(vx + rand(-0.3, 0.3), 0.1, vz + rand(-0.3, 0.3), rand(-0.15, 0.15), rand(0.8, 1.6), rand(-0.15, 0.15), 0.22 + c[0] * (lo ? 0.4 : 0.15), 0.23 + c[1] * (lo ? 0.4 : 0.15), 0.27 + c[2] * (lo ? 0.4 : 0.15), rand(1.2, 2.2), 0.18, 0.9, -0.15, 0.5, 0.55); } });
+    if (L.ventShafts) L.ventShafts.uniforms.uT.value = G.rt;
     const blink = (G.rt % 1.6) < 0.5 ? 1 : 0.05;
     for (const s of redLights) s.material.opacity = blink;
     uwMat.opacity = 0.26 + Math.sin(G.rt * 0.7) * 0.06 + Math.sin(G.rt * 2.3) * 0.03;
