@@ -377,7 +377,8 @@ export function buildLevel(scene, world, wet) {
       for (let fl = 0; fl < floors; fl++) for (let c = 0; c < cols; c++) {
         const u = (c + 0.5) / cols * fw - fw / 2, y = 5.2 + fl * 3.4;
         const p = alongZ ? new THREE.Vector3(fx, y, (z0 + z1) / 2 + u) : new THREE.Vector3((x0 + x1) / 2 + u, y, fz);
-        kit.window(p, ry, rnd() < (opts.lit ?? 0.38));
+        const lit = rnd() < (opts.lit ?? 0.38);
+        if (!(opts.skipWin && opts.skipWin(p))) kit.window(p, ry, lit);
       }
       if (!opts.bare) kit.dress(alongZ ? fx : (x0 + x1) / 2, alongZ ? (z0 + z1) / 2 : fz, ry, fw, h, floors, cols);
       if (opts.noStore && opts.noStore.includes(f)) continue;
@@ -392,23 +393,32 @@ export function buildLevel(scene, world, wet) {
   [[-27, -17.5, 15], [-15.5, -3.5, 11], [-1.5, 11, 17], [13, 25, 10]].forEach(([z0, z1, h]) => bldg(-28, -12.7, z0, z1, h, 'x'));
   [[-27, -12.5, 13], [-6.5, 1, 9], [3, 14, 12], [16, 25, 9]].forEach(([z0, z1, h]) => bldg(12.7, 28, z0, z1, h, 'x'));
   // Neon
+  // vertical signs are blade signs (environment.md Fix 3): they face +z (the camera) and stick out from the wall at x
+  // into the street, on a backing box with two brackets; rotY only says which way the street is (sin > 0: +x)
+  const signBack = new THREE.MeshStandardMaterial({ color: 0x0c0d10, metalness: 0.5, roughness: 0.5 });
   const sign = (text, color, vertical, x, y, z, rotY, w, h, sub) => {
     const t = signTexture(text, color, vertical, sub);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1.45, 1.45, 1.45), toneMapped: false, side: vertical ? THREE.DoubleSide : THREE.FrontSide }));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1.45, 1.45, 1.45), toneMapped: false }));
+    if (vertical) {
+      const dir = Math.sin(rotY) > 0 ? 1 : -1, cx = x + dir * (0.15 + w / 2);
+      m.position.set(cx, y, z + 0.06); scene.add(m);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.12, h + 0.12, 0.1), signBack); back.position.set(cx, y, z); scene.add(back);
+      for (const e of [-1, 1]) { const b = new THREE.Mesh(new THREE.BoxGeometry(w + 0.15, 0.05, 0.05), signBack); b.position.set(x + dir * (w + 0.15) / 2, y + e * (h / 2 - 0.08), z - 0.02); scene.add(b); }
+      return [m, back, cx];
+    }
     m.position.set(x, y, z); m.rotation.y = rotY; scene.add(m);
-    let back = null;
-    if (!vertical) { back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, h + 0.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x0c0d10, metalness: 0.5, roughness: 0.5 })); back.position.set(x, y, z); back.rotation.y = rotY; back.translateZ(-0.07); scene.add(back); }
+    const back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, h + 0.2, 0.1), signBack.clone()); back.position.set(x, y, z); back.rotation.y = rotY; back.translateZ(-0.07); scene.add(back);
     return [m, back];
-    if (vertical) { const back = new THREE.Mesh(new THREE.BoxGeometry(0.12, h + 0.2, w + 0.2), new THREE.MeshStandardMaterial({ color: 0x111, metalness: 0.6, roughness: 0.4 })); back.position.set(x, y, z); back.rotation.y = rotY - Math.PI / 2; scene.add(back); }
   };
-  sign('RAMEN', '#ff2a8a', true, -12.2, 7.5, -9, Math.PI / 2, 1.3, 5.2);
-  sign('HOTEL', '#19e3ff', true, 12.2, 8, -20, -Math.PI / 2, 1.3, 5.2);
-  sign('BAR', '#ff5040', true, 12.2, 5.5, 8.5, -Math.PI / 2, 1.1, 3.2);
-  sign('WASH', '#7dffb0', true, -12.2, 5.2, 18, Math.PI / 2, 1.1, 3.6);
+  sign('RAMEN', '#ff2a8a', true, -12.7, 7.5, -9, Math.PI / 2, 1.3, 5.2);
+  sign('HOTEL', '#19e3ff', true, 12.7, 8, -20, -Math.PI / 2, 1.3, 5.2);
+  sign('BAR', '#ff5040', true, 12.7, 5.5, 8.5, -Math.PI / 2, 1.1, 3.2);
+  sign('WASH', '#7dffb0', true, -12.7, 5.2, 18, Math.PI / 2, 1.1, 3.6);
   const arch = sign('PIER 9 MARKET', '#ffb060', false, 0, 10.5, -26.5, 0, 14, 2.6, 'OPEN LATE · FISH · NOODLES');
   for (const q of arch) if (q) L.noBatch.push(q);   // it fades out of the camera's way
-  sign('OUTLIERS ARE NOT A CRIME', '#ff2a8a', false, -16.5, 5.2, -26.5, 0, 7.5, 1.0);
-  sign('THE CENSUS COUNTS', '#ffd9a0', false, 17, 5.4, -26.5, 0, 7.5, 1.3, '|||| EVERY ONE OF US');
+  // the propaganda flanks the market entrance on the visible strips of the market blocks' south faces
+  sign('OUTLIERS ARE NOT A CRIME', '#ff2a8a', false, -10.15, 5.2, -26.55, 0, 4.6, 0.62);
+  sign('THE CENSUS COUNTS', '#ffd9a0', false, 10.15, 5.4, -26.55, 0, 4.6, 0.8, '|||| EVERY ONE OF US');
   { const beam = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.5, metalness: 0.7 })); beam.position.set(0, 10.5, -26.85); scene.add(beam); arch.push(beam); }
   // the arch over the market entrance fades out while the camera passes under it
   for (const m of arch) if (m) { m.material.transparent = true; m.userData.baseOpacity = 1; }
@@ -416,7 +426,7 @@ export function buildLevel(scene, world, wet) {
     const target = center.z < -23.5 ? 0 : 1;
     for (const m of arch) if (m) { const o = m.material.opacity + (target - m.material.opacity) * 0.12; m.material.opacity = o; m.visible = o > 0.02; }
   };
-  addSpot(-10.8, 5, -9, 0xff2a8a, 22, 15, 1.7); addSpot(10.8, 6, -20, 0x19e3ff, 22, 15, 1.7);
+  addSpot(-11.9, 7.5, -8.4, 0xff2a8a, 22, 15, 1.7); addSpot(11.9, 8, -19.4, 0x19e3ff, 22, 15, 1.7);
 
   // Victorian lamp posts (photoscanned) with warm sodium-ish pools and a hint of volumetric haze
   const lampSrc = A.gltf.street_lamp.scene;
@@ -781,11 +791,25 @@ function buildPier9(C) {
   }
   const bulbIM = new THREE.InstancedMesh(new THREE.SphereGeometry(0.075, 8, 6), glowMat(2.6, 1.7, 0.85), bulbs.length);
   bulbs.forEach((p, i) => bulbIM.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z))); scene.add(bulbIM);
-  sign('NOODLES', '#ff2a8a', true, -7.64, 6.2, -37, Math.PI / 2, 1.2, 4.6); addSpot(-6.6, 5.5, -37, 0xff2a8a, 16, 11, 1.7);
-  sign('FISH', '#19e3ff', true, 7.64, 5.6, -55, -Math.PI / 2, 1.1, 3.4); addSpot(6.6, 5, -55, 0x19e3ff, 16, 11, 1.7);
-  sign('PAWN', '#ffb03a', true, -7.64, 5.4, -58, Math.PI / 2, 1.1, 3.6);
-  sign('ENUMERATION 99.9997%', '#e8f0ff', false, 7.64, 9.6, -47, -Math.PI / 2, 10, 1.9, 'THANK YOU FOR BEING COUNTED');
-  sign('EVERYONE COUNTS', '#e8f0ff', false, -7.64, 10.5, -52, Math.PI / 2, 7, 1.3);
+  sign('NOODLES', '#ff2a8a', true, -7.6, 6.2, -37, Math.PI / 2, 1.2, 4.6); addSpot(-6.85, 6.2, -36.4, 0xff2a8a, 16, 11, 1.7);
+  sign('FISH', '#19e3ff', true, 7.6, 5.6, -55, -Math.PI / 2, 1.1, 3.4); addSpot(6.9, 5.6, -54.4, 0x19e3ff, 16, 11, 1.7);
+  sign('PAWN', '#ffb03a', true, -7.6, 5.4, -58, Math.PI / 2, 1.1, 3.6);
+  // Census banners hung across the lane on two cables, facing the camera; they fade while she walks just north of them
+  {
+    const cableMat = new THREE.MeshStandardMaterial({ color: 0x0b0c0e, roughness: 0.6, metalness: 0.4 });
+    const banner = (text, sub, y, z, w, h) => {
+      const [m, back] = sign(text, '#e8f0ff', false, 0, y, z, 0, w, h, sub), objs = [m, back];
+      for (const e of [-1, 1]) {
+        const ax = e * 7.6, ay = 9.2, bx = e * (w / 2 - 0.2), by = y + h / 2, len = Math.hypot(ax - bx, ay - by);
+        const c = new THREE.Mesh(new THREE.BoxGeometry(len, 0.035, 0.035), cableMat.clone()); c.position.set((ax + bx) / 2, (ay + by) / 2, z - 0.05); c.rotation.z = Math.atan2(ay - by, ax - bx); scene.add(c); objs.push(c);
+      }
+      const mats = objs.map(o => o.material); for (const q of mats) { q.transparent = true; q.opacity = 1; }
+      for (const o of objs) L.noBatch.push(o);
+      L.fades.push({ objs, mats, low: 0.12, test: (c) => c.z < z && c.z > z - 8 && Math.abs(c.x) < 9 });
+    };
+    banner('ENUMERATION 99.9997%', 'THANK YOU FOR BEING COUNTED', 8.6, -40, 10, 1.9);
+    banner('EVERYONE COUNTS', null, 8.2, -52, 7, 1.3);
+  }
 
   // ---------------- GUT LANE: a narrow wet service alley ----------------
   floor('asphalt_02', -4.6, 4.6, -92.4, -64.4, 3.2, 1, 1, { normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: 1.0, gut: [0, 0, 0.3, 1] });
@@ -849,8 +873,9 @@ function buildPier9(C) {
     L.noBatch.push(shafts); L.ventShafts = shaftMat;
   }
   // her mark, and a way to Moth's
-  decal(decalTexture((x, w, h) => { x.strokeStyle = '#9b6bff'; x.lineWidth = 16; x.shadowColor = '#9b6bff'; x.shadowBlur = 12; x.beginPath(); x.arc(w / 2, h / 2, 80, 0, 6.28); x.stroke(); x.beginPath(); x.moveTo(w / 2 - 110, h / 2 + 110); x.lineTo(w / 2 + 110, h / 2 - 110); x.stroke(); }, 512, 256), 3.2, 1.6, -4.58, 2.4, -76, Math.PI / 2, 0.85);
-  decal(decalTexture((x, w, h) => { x.font = '900 72px Inter, Arial'; x.fillStyle = '#e9e4da'; x.textAlign = 'center'; x.globalAlpha = 0.85; x.fillText('COUNT ME OUT', w / 2, h / 2 + 24); }, 512, 128), 3.4, 0.85, 4.58, 2.1, -71, -Math.PI / 2, 0.8);
+  // on the south face at the top of Yard Road: the first thing in frame when she steps out of Gut Lane
+  decal(decalTexture((x, w, h) => { x.strokeStyle = '#9b6bff'; x.lineWidth = 16; x.shadowColor = '#9b6bff'; x.shadowBlur = 12; x.beginPath(); x.arc(w / 2, h / 2, 80, 0, 6.28); x.stroke(); x.beginPath(); x.moveTo(w / 2 - 110, h / 2 + 110); x.lineTo(w / 2 + 110, h / 2 - 110); x.stroke(); }, 512, 256), 4, 2, 7.2, 2.6, -81.97, 0, 0.85);
+  decal(decalTexture((x, w, h) => { x.font = '900 72px Inter, Arial'; x.fillStyle = '#e9e4da'; x.textAlign = 'center'; x.globalAlpha = 0.85; x.fillText('COUNT ME OUT', w / 2, h / 2 + 24); }, 512, 128), 3.4, 0.85, 11.5, 1.9, -81.97, 0, 0.8);
   decal(decalTexture((x, w, h) => { x.font = '800 60px Inter, Arial'; x.fillStyle = '#ffb060'; x.textAlign = 'center'; x.fillText('INK  ▾  PIER 9', w / 2, h / 2 + 20); }, 512, 128), 2.6, 0.65, 4.58, 1.8, -88.5, -Math.PI / 2, 0.85);
 
   // ---------------- PIER 9: the docks ----------------
@@ -996,7 +1021,7 @@ function buildExpansion(C, H) {
   block(20, 30, -30, -12.55, 14, ['+x'], { storeW: 6 });
   block(20, 30, -6.45, 6, 12, ['+x'], { storeW: 6 });
   block(28, 44, -42, -30, 10, ['+z', '-z', '+x'], { noStore: ['-z'] });
-  block(50, 70, -42, -30, 20, ['+z', '-z', '-x'], { noStore: ['-z', '-x'] });
+  block(50, 70, -42, -30, 20, ['+z', '-z', '-x'], { noStore: ['+z', '-z', '-x'], skipWin: (p) => p.z > -30.5 && p.x > 50.2 && p.x < 61.8 && p.y < 7.3 });
   block(62, 80, -30, 6, 18, ['-x'], { storeW: 9 });
   block(28, 80, 4, 20, 7, ['-z'], { storeW: 8 });
   // Census checkpoint booth + scanner arches at the side-street mouth
@@ -1018,8 +1043,9 @@ function buildExpansion(C, H) {
     x.font = '700 15px Inter, Arial'; x.fillStyle = '#9fb4d8'; x.fillText('REGISTRAR C. WEIL · LIVE', w * 0.56, h * 0.74);
     for (let y = 0; y < h; y += 3) { x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(0, y, w, 1); }
   });
-  { const m = new THREE.Mesh(new THREE.PlaneGeometry(11, 5.5), new THREE.MeshBasicMaterial({ map: weilTex, color: new THREE.Color(1.3, 1.3, 1.4), toneMapped: false })); m.position.set(61.95, 8.5, -12); m.rotation.y = -Math.PI / 2; scene.add(m); addSpot(58.5, 8, -12, 0xd8f2ff, 16, 14, 1.6); }
-  sign('TALLY CLINIC', '#19e3ff', true, 30.05, 6, -24, Math.PI / 2, 1.2, 5);
+  // low on the south face of the north block: from the plaza camera that wall is only in frame below y ~7 m
+  { const m = new THREE.Mesh(new THREE.PlaneGeometry(11, 5.5), new THREE.MeshBasicMaterial({ map: weilTex, color: new THREE.Color(1.3, 1.3, 1.4), toneMapped: false })); m.position.set(56, 4.25, -29.93); scene.add(m); addSpot(56, 4.5, -27.5, 0x9fc0ff, 16, 14, 1.6); }
+  sign('TALLY CLINIC', '#19e3ff', true, 30.0, 6, -24, Math.PI / 2, 1.2, 5);
   // planters + benches + tram shelter
   const planterMat = pbr('concrete_wall_008', 1, 0.4);
   const leaf = new THREE.MeshStandardMaterial({ color: 0x1d2a1a, roughness: 0.9 });
