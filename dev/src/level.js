@@ -209,7 +209,7 @@ function pbr(prefix, rx, ry, extra = {}) {
 
 // ---------- level ----------
 export function buildLevel(scene, world, wet) {
-  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [], fades: [], roofs: [], lampPosts: [] };
+  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [], fades: [], roofs: [], lampPosts: [], noBatch: [] };
   // Every lamp, neon and lantern registers a light "spot"; only the POOL nearest the camera get a real
   // point light each frame, so the shader cost stays flat however big the world gets.
   const spots = L.spots;
@@ -381,6 +381,7 @@ export function buildLevel(scene, world, wet) {
   sign('BAR', '#ff5040', true, 12.2, 5.5, 8.5, -Math.PI / 2, 1.1, 3.2);
   sign('WASH', '#7dffb0', true, -12.2, 5.2, 18, Math.PI / 2, 1.1, 3.6);
   const arch = sign('PIER 9 MARKET', '#ffb060', false, 0, 10.5, -26.5, 0, 14, 2.6, 'OPEN LATE · FISH · NOODLES');
+  for (const q of arch) if (q) L.noBatch.push(q);   // it fades out of the camera's way
   sign('OUTLIERS ARE NOT A CRIME', '#ff2a8a', false, -16.5, 5.2, -26.5, 0, 7.5, 1.0);
   sign('THE CENSUS COUNTS', '#ffd9a0', false, 17, 5.4, -26.5, 0, 7.5, 1.3, '|||| EVERY ONE OF US');
   { const beam = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.5, metalness: 0.7 })); beam.position.set(0, 10.5, -26.85); scene.add(beam); arch.push(beam); }
@@ -403,7 +404,7 @@ export function buildLevel(scene, world, wet) {
   });
   const lampSpots = [[-9.4, -17], [9.4, -5], [-9.4, 7], [9.4, 18], [-9.4, -26 + 4], [9.4, -24]];
   for (const [lx, lz] of lampSpots) {
-    const lamp = lampSrc.clone(); lamp.position.set(lx, 0, lz); lamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(lamp); L.lampPosts.push([lx, lz]);
+    const lamp = lampSrc.clone(); lamp.position.set(lx, 0, lz); lamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); lamp.userData.static = true; scene.add(lamp); L.lampPosts.push([lx, lz]);
     addSpot(lx, 3.45, lz, 0xffbf80, 32, 16, 1.5);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(2.0, 1.4, 0.8), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     halo.position.set(lx, 3.55, lz); halo.scale.setScalar(0.35); scene.add(halo);
@@ -435,7 +436,7 @@ export function buildLevel(scene, world, wet) {
   for (const [hx, hz] of [[-9.0, -2], [9.0, 12]]) {
     const g = new THREE.Group(); hyd.updateMatrixWorld(true);
     hyd.traverse(o => { if (o.isMesh) { let t = o; while (t.parent && t.parent !== hyd) t = t.parent; if (!/aged/.test(t.name)) return; const m = new THREE.Mesh(o.geometry, o.material); m.applyMatrix4(o.matrixWorld); m.position.x -= 0.3; m.castShadow = m.receiveShadow = true; g.add(m); } });
-    g.position.set(hx, 0, hz); g.rotation.y = hx < 0 ? Math.PI / 2 : -Math.PI / 2; scene.add(g);
+    g.position.set(hx, 0, hz); g.rotation.y = hx < 0 ? Math.PI / 2 : -Math.PI / 2; g.userData.static = true; scene.add(g);
     const b = new CANNON.Body({ mass: 0, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL }); b.addShape(new CANNON.Cylinder(0.18, 0.18, 0.8, 8)); b.position.set(hx, 0.4, hz); world.addBody(b);
   }
 
@@ -875,7 +876,7 @@ function buildExpansion(C, H) {
   // dark fill under the east of the city so nothing shows through the gaps
   { const f = new THREE.Mesh(new THREE.PlaneGeometry(110, 200), new THREE.MeshStandardMaterial({ color: 0x0f1013, roughness: 1 })); f.rotation.x = -Math.PI / 2; f.position.set(45, -0.03, -60); scene.add(f); wet.hide.push(f); }
   const lampPost = (x, z, ry = 0) => {
-    const lamp = lampSrc.clone(); lamp.position.set(x, 0, z); lamp.rotation.y = ry; lamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(lamp); L.lampPosts.push([x, z]);
+    const lamp = lampSrc.clone(); lamp.position.set(x, 0, z); lamp.rotation.y = ry; lamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); lamp.userData.static = true; scene.add(lamp); L.lampPosts.push([x, z]);
     addSpot(x, 3.45, z, 0xffbf80, 30, 15, 1.5);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(2.0, 1.4, 0.8), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); halo.position.set(x, 3.55, z); halo.scale.setScalar(0.35); scene.add(halo);
     { const hz = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(0.18, 0.13, 0.08), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); hz.position.set(x, 3.5, z); hz.scale.setScalar(1.8); scene.add(hz); }

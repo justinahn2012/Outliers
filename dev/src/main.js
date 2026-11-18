@@ -13,6 +13,7 @@ import { Tether } from './fx.js';
 import { buildLevel, buildEnvironment, Wet } from './level.js';
 import { makeCyber } from './cyber.js';
 import { makeDigitizer } from './digitize.js';
+import { staticBatch, mergeGroupByMaterial } from './batch.js';
 import { makeProp, removeProp, setGlow, applyDamageLook, populateZone, DEFS } from './props.js';
 import { createHero, updateHeroVisual, blendLocomotion } from './hero.js';
 import { spawnEnemy, removeEnemy, updateEnemyVisual, setRagdoll, setEnemyGlow, ETYPES } from './enemies.js';
@@ -26,6 +27,7 @@ import { P as PROG, SKILLS, MAX_RANK, xpToNext, load as loadProgress, save as sa
 // ======================= renderer / scene =======================
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+renderer.info.autoReset = false;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -181,6 +183,10 @@ async function boot() {
   level = buildLevel(scene, world, wet); G.level = level; level.facade.sfx = sfx;
   cyber = makeCyber(scene, level, wet, world); G.cyber = cyber;
   G.digit = makeDigitizer(scene);
+  { // fold the static city into a few big meshes per 32 m cell (draw calls are the phone's bottleneck)
+    const nb = new Set([...wet.hide, ...(level.noBatch || [])]); for (const F of level.fades) for (const o of F.objs) nb.add(o);
+    G.batchStats = staticBatch(scene, { exclude: nb });
+  }
   // Upright characters are velocity-driven with locked rotation; cannon's friction would pin them in place,
   // so they get a frictionless material. Ragdolls drop the material and use normal friction.
   world.addContactMaterial(new CANNON.ContactMaterial(G.charMat, G.groundMat, { friction: 0, restitution: 0 }));
@@ -2186,7 +2192,7 @@ function buildCages() {
     for (const sx of [-1.1, 1.1]) for (let k = 0; k < 6; k++) bar(0.04, 2.4, 0.04, sx, 1.2, -0.95 + k * 0.38);
     for (let k = 0; k < 11; k++) bar(0.04, 2.4, 0.04, -1.05 + k * 0.21, 1.2, -1.0);
     bar(2.3, 0.08, 2.1, 0, 2.42, 0);
-    g.position.set(x, 0, z); scene.add(g);
+    g.position.set(x, 0, z); mergeGroupByMaterial(g); scene.add(g);
     const bodies = [];
     for (const [hx, hz, cx, cz] of [[0.06, 1.05, -1.1, 0], [0.06, 1.05, 1.1, 0], [1.15, 0.06, 0, -1.0]]) { const b = new CANNON.Body({ mass: 0, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL }); b.addShape(new CANNON.Box(new CANNON.Vec3(hx, 1.2, hz))); b.position.set(x + cx, 1.2, z + cz); world.addBody(b); bodies.push(b); }
     const door = addProp('cagedoor', x, z + 1.12, 0, 1.22); door.zone = 4; door.body.mass = 0; door.body.updateMassProperties(); door.body.type = CANNON.Body.STATIC; door.pinned = true;
@@ -2645,7 +2651,7 @@ function frame(now) {
 
   try { stepGame(dt, rdt); } catch (err) { reportError(err); }
   try { renderFrame(dt, rdt); } catch (err) { reportError(err); }
-  try { G.bloomKick = Math.max(0, (G.bloomKick || 0) - rdt * 2.2); bloom.strength = 0.55 + Math.min(0.45, G.bloomKick); Shock.update(rdt, grade.uniforms, camera, G.W, G.H); grade.uniforms.uTime.value = G.rt % 100; G.glitch = Math.max(0, (G.glitch || 0) - rdt * 2.4); grade.uniforms.uGlitch.value = Math.min(1, G.glitch); G.freeze = G.freeze || 0; G.freezeV = (G.freezeV || 0) + (G.freeze - (G.freezeV || 0)) * Math.min(1, rdt * 9); grade.uniforms.uFreeze.value = G.freezeV; wet.render(renderer, scene, camera); composer.render(); } catch (err) { reportError(err); }
+  try { G.bloomKick = Math.max(0, (G.bloomKick || 0) - rdt * 2.2); bloom.strength = 0.55 + Math.min(0.45, G.bloomKick); Shock.update(rdt, grade.uniforms, camera, G.W, G.H); grade.uniforms.uTime.value = G.rt % 100; G.glitch = Math.max(0, (G.glitch || 0) - rdt * 2.4); grade.uniforms.uGlitch.value = Math.min(1, G.glitch); G.freeze = G.freeze || 0; G.freezeV = (G.freezeV || 0) + (G.freeze - (G.freezeV || 0)) * Math.min(1, rdt * 9); grade.uniforms.uFreeze.value = G.freezeV; renderer.info.reset(); wet.render(renderer, scene, camera); G.wetCalls = renderer.info.render.calls; composer.render(); G.rinfo = [renderer.info.render.calls, renderer.info.render.triangles, G.wetCalls]; } catch (err) { reportError(err); }
   const _t2 = performance.now();
   PERF.js = PERF.js * 0.9 + (_t2 - _t0) * 0.1; PERF.rdt = rdt;
 }
@@ -2726,6 +2732,17 @@ boot();
 window.__G = G; // debug hook
 window.__dbg = {
   snap: () => { camState.init = false; },
+  rstats: () => G.rinfo,
+  drawProfile: () => new Promise(res => {
+    const orig = renderer.renderBufferDirect.bind(renderer), counts = {};
+    renderer.renderBufferDirect = (cam, sc, geo, mat, obj, grp) => {
+      let top = obj; while (top.parent && top.parent !== scene) top = top.parent;
+      const pr = G.props.find(p => p.mesh === top), en = G.enemies.find(e => e.root === top || e.char === top || (e.char && e.char.parent === top));
+      let tag = (pr ? 'prop:' + pr.type : en ? 'enemy:' + en.type : top === hero.root ? 'hero' : top.userData.batched ? 'batched' : (top.name || top.type)) + (mat.isMeshDepthMaterial || mat.isMeshDistanceMaterial ? ' [shadow]' : ' ' + mat.type);
+      counts[tag] = (counts[tag] || 0) + 1; return orig(cam, sc, geo, mat, obj, grp);
+    };
+    requestAnimationFrame(() => requestAnimationFrame(() => { renderer.renderBufferDirect = orig; res(Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 40)); }));
+  }),
   camPos: () => [camera.position.x, camera.position.y, camera.position.z, camState.look.x, camState.look.z].map(v => Math.round(v * 10) / 10),
   edits: () => EDITS.map(E => E.kind), ageEdits: (t) => { for (const E of EDITS) E.t += t; }, rewriteWorld: (x, y, z) => { toScreen(new THREE.Vector3(x, y, z), _sp); return rewriteAt(99, _sp.x, _sp.y); }, gates: () => level.gates.map(g => [g.pos.x, g.pos.z, g.open]), heat: () => hero.focus,
   wallNear: () => { const hp = heroCenter(); let best = null, bd = 1e9; for (const b of wallBodies()) { const d = boxDistXZ(b, hp); if (d < bd) { bd = d; best = b; } } return best ? [best.position.x, best.position.z, best.shapes[0].halfExtents.x, best.shapes[0].halfExtents.z, bd] : null; },

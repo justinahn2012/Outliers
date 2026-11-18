@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGroupByMaterial } from './batch.js';
 import * as CANNON from 'cannon-es';
 import { G, GRP, ALL, clamp, rand } from './state.js';
 import { A } from './assets.js';
@@ -50,7 +51,7 @@ function template(type) {
     for (let k = 1; k < 10; k++) parts.push([0.04, 2.3, 0.04, -1.05 + k * 0.21, 0]);
     parts.push([2.2, 0.06, 0.06, 0, 0]);
     for (const [w, h, d, x, y] of parts) { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, 0); b.castShadow = true; g.add(b); }
-    return (TEMPLATES[type] = { g, size: new THREE.Vector3(2.2, 2.4, 0.14) });
+    mergeGroupByMaterial(g); return (TEMPLATES[type] = { g, size: new THREE.Vector3(2.2, 2.4, 0.14) });
   }
   if (def.proc === 'riotshield') {
     const g = new THREE.Group();
@@ -77,6 +78,7 @@ function template(type) {
     m.castShadow = m.receiveShadow = true;
     g.add(m);
   });
+  mergeGroupByMaterial(g);      // one draw per material, not per sub-mesh
   const box = new THREE.Box3().setFromObject(g);
   const size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
   for (const m of g.children) m.position.sub(c);
