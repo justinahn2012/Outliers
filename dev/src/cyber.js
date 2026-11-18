@@ -735,7 +735,7 @@ export function makeCyber(scene, level, wet, world) {
       const c = document.createElement('canvas'); c.width = c.height = 256; const t = new THREE.CanvasTexture(c);
       const m = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.ShaderMaterial({ uniforms: { tMap: { value: t }, uDecay: { value: 0 }, uTime: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
         vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-        fragmentShader: 'uniform sampler2D tMap; uniform float uDecay; uniform float uTime; varying vec2 vU; float hs(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); } void main(){ vec2 cell = floor(vU * 48.0); float h = hs(cell + floor(uTime * 4.0)); if (h < uDecay) discard; vec4 tx = texture2D(tMap, (cell + 0.5) / 48.0 * step(0.01, uDecay) + vU * (1.0 - step(0.01, uDecay))); gl_FragColor = vec4(vec3(1.0, 0.6, 0.12) * tx.r * 0.6 * (h < uDecay + 0.12 ? 3.0 : 1.0), 1.0); }' }));
+        fragmentShader: 'uniform sampler2D tMap; uniform float uDecay; uniform float uTime; varying vec2 vU; float hs(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); } void main(){ vec2 cell = floor(vU * 48.0); float h = hs(cell + floor(uTime * 4.0)); if (h < uDecay) discard; vec4 tx = texture2D(tMap, (cell + 0.5) / 48.0 * step(0.01, uDecay) + vU * (1.0 - step(0.01, uDecay))); gl_FragColor = vec4(vec3(1.0, 0.6, 0.12) * tx.r * 0.42 * (uDecay > 0.001 && h < uDecay + 0.12 ? 3.0 : 1.0), 1.0); }' }));
       m.rotation.x = -Math.PI / 2; m.renderOrder = 3; scene.add(m); wet.hide.push(m);
       return { m, c, t, shown: -1, decay: 0 };
     };

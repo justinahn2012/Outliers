@@ -14,6 +14,7 @@ import { buildLevel, buildEnvironment, Wet } from './level.js';
 import { makeCyber } from './cyber.js';
 import { makeDigitizer } from './digitize.js';
 import { staticBatch, mergeGroupByMaterial } from './batch.js';
+import { makeTrails } from './trails.js';
 import { makeProp, removeProp, setGlow, applyDamageLook, populateZone, DEFS } from './props.js';
 import { createHero, updateHeroVisual, blendLocomotion } from './hero.js';
 import { spawnEnemy, removeEnemy, updateEnemyVisual, setRagdoll, setEnemyGlow, ETYPES } from './enemies.js';
@@ -183,6 +184,7 @@ async function boot() {
   level = buildLevel(scene, world, wet); G.level = level; level.facade.sfx = sfx;
   cyber = makeCyber(scene, level, wet, world); G.cyber = cyber;
   G.digit = makeDigitizer(scene);
+  G.trails = makeTrails(scene);
   { // fold the static city into a few big meshes per 32 m cell (draw calls are the phone's bottleneck)
     const nb = new Set([...wet.hide, ...(level.noBatch || [])]); for (const F of level.fades) for (const o of F.objs) nb.add(o);
     G.batchStats = staticBatch(scene, { exclude: nb });
@@ -925,7 +927,7 @@ function updateThrown(dt) {
             if (!o.alive) break;
           }
         }
-        if (Math.random() < 0.9) FX.add.emit(b.position.x, b.position.y, b.position.z, rand(-0.5, 0.5), rand(-0.5, 0.5), rand(-0.5, 0.5), 0.7, 0.45, 1.6, 0.35, 0.35 + o.radius * 0.3, 0.02, 0, 1, 0.8);
+        if (Math.random() < 0.3) FX.add.emit(b.position.x, b.position.y, b.position.z, rand(-0.5, 0.5), rand(-0.5, 0.5), rand(-0.5, 0.5), 0.7, 0.45, 1.6, 0.35, 0.25 + o.radius * 0.2, 0.02, 0, 1, 0.8);
       }
       if ((o.thrownT > 0.3 && sp < 2.2) || o.thrownT > 5) {
         o.thrown = false; o.dropped = false; o.antiGrav = 0;
@@ -1165,7 +1167,7 @@ function updateBolts(dt) {
     B.p.addScaledVector(B.v, dt); B.life -= dt; B.m.position.copy(B.p);
     if (level.facade) { _gA.set(px, py, pz); const gh = level.facade.hitSegment(_gA, B.p, !!B.hero); if (gh && !B.hero) { FX.sparks(gh, 6, 3, [0.8, 0.9, 1]); } }
     if (B.hero) {
-      if (Math.random() < 0.8) FX.add.emit(B.p.x, B.p.y, B.p.z, 0, 0, 0, 0.9, 0.5, 2.4, 0.2, 0.22, 0.02);
+      if (Math.random() < 0.3) FX.add.emit(B.p.x, B.p.y, B.p.z, 0, 0, 0, 0.9, 0.5, 2.4, 0.2, 0.22, 0.02);
       let hit = B.life <= 0;
       if (!hit) for (const e of G.enemies) {
         if (e.dead || !e.alive) continue;
@@ -1192,7 +1194,7 @@ function updateBolts(dt) {
       if (hit) { scene.remove(B.m); G.bolts.splice(i, 1); }
       continue;
     }
-    if (Math.random() < 0.7) FX.add.emit(B.p.x, B.p.y, B.p.z, 0, 0, 0, 1.6, 0.8, 0.2, 0.18, 0.2, 0.02);
+    if (Math.random() < 0.25) FX.add.emit(B.p.x, B.p.y, B.p.z, 0, 0, 0, 1.6, 0.8, 0.2, 0.18, 0.2, 0.02);
     let dead = B.life <= 0;
     // blocked by anything Null holds in the line of fire (judged top-down, like the player sees it)
     if (!dead) for (const h of G.holds.values()) {
@@ -2725,6 +2727,7 @@ function renderFrame(dt, rdt) {
   level.update(rdt, camState.look);
   if (cyber) safe(() => cyber.update(rdt, camState.look, heroCenter()));
   if (G.digit) safe(() => G.digit.update(rdt, G.props));
+  if (G.trails) safe(() => G.trails.update(G.bolts, G.props));
   updateUI(rdt);
 }
 const PERF = { js: 0, render: 0, rdt: 0 }; window.__perf = PERF;
