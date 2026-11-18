@@ -69,20 +69,37 @@ function storeTexture() {
   x.fillStyle = '#16100a'; for (let k = 0; k <= 4; k++) x.fillRect(k * 128 - 3, 0, 6, 192); x.fillRect(0, 0, 512, 8);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-// world-space puddle mask covering the whole block (R = standing water)
+// world-space puddle mask (R = standing water), 40 x 40 m tiled (environment.md Fix 2): compound puddles + wheel ruts.
+// Gutters are a uniform per floor now, not baked in.
 function puddleTexture() {
-  const S = 512; const [c, x] = canvas(S, S);
+  const S = 512, PX = S / 40; const [c, x] = canvas(S, S);
   x.fillStyle = '#000'; x.fillRect(0, 0, S, S);
   seed = 99;
-  for (let i = 0; i < 70; i++) {
-    const px = rnd() * S, py = rnd() * S, r = 6 + rnd() * 30;
-    x.save(); x.translate(px, py); x.rotate(rnd() * 3); x.scale(1, 0.4 + rnd() * 0.8);
-    const g = x.createRadialGradient(0, 0, 0, 0, 0, r); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.6, 'rgba(255,255,255,0.7)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-    x.fillStyle = g; x.beginPath(); x.arc(0, 0, r, 0, Math.PI * 2); x.fill(); x.restore();
+  const wrap = (draw) => { for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) { x.save(); x.translate(ox, oy); draw(); x.restore(); } };
+  x.filter = 'blur(2px)'; x.fillStyle = '#fff';
+  for (let i = 0; i < 18; i++) {
+    const cx = rnd() * S, cy = rnd() * S, parts = 3 + Math.floor(rnd() * 3);
+    for (let k = 0; k < parts; k++) {
+      const r = (0.4 + rnd() * 1.2) * PX, px = cx + (rnd() - 0.5) * 2.2 * PX, py = cy + (rnd() - 0.5) * 2.2 * PX, pts = [];
+      for (let v = 0; v < 14; v++) { const a = v / 14 * Math.PI * 2, rr = r * (0.75 + rnd() * 0.5); pts.push([px + Math.cos(a) * rr, py + Math.sin(a) * rr]); }
+      wrap(() => { x.beginPath(); pts.forEach(([a, b], j) => j ? x.lineTo(a, b) : x.moveTo(a, b)); x.closePath(); x.fill(); });
+    }
   }
-  // gutters along both curbs collect water
-  for (const gx of [S * (4.6 / 30), S * (25.4 / 30)]) { const g = x.createLinearGradient(gx - 10, 0, gx + 10, 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,0.75)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(gx - 10, 0, 20, S); }
-  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t;
+  for (let i = 0; i < 10; i++) {
+    const cx = rnd() * S, cy = rnd() * S, len = (2 + rnd() * 4) * PX, w = 0.45 * PX;
+    for (const off of [-0.9, 0.9]) wrap(() => { x.beginPath(); x.roundRect(cx + off * PX - w / 2, cy - len / 2, w, len, w / 2); x.fill(); });
+  }
+  x.filter = 'none';
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+// sodium-lit cloud base: only the reflection camera sees it (layer 1), so puddles mirror a lit sky instead of black
+function cloudTexture() {
+  const S = 256; const [c, x] = canvas(S, S); x.fillStyle = '#000'; x.fillRect(0, 0, S, S);
+  for (let i = 0; i < 180; i++) {
+    const px = rnd() * S, py = rnd() * S, r = 10 + rnd() * 30;
+    for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) { const g = x.createRadialGradient(px + ox, py + oy, 0, px + ox, py + oy, r); g.addColorStop(0, 'rgba(255,255,255,0.08)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(px + ox - r, py + oy - r, r * 2, r * 2); }
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 }
 
 // ---------- planar reflection for the wet street ----------
@@ -94,6 +111,17 @@ export class Wet {
     this.enabled = true;
     this.uniforms = { tRefl: { value: this.rt.texture }, uTexMatrix: { value: this.texMatrix }, tPuddle: { value: puddleTexture() }, uTime: { value: 0 }, uWet: { value: 1 }, uReflOn: { value: 1 } };
     this.hide = [];
+    this.cam.layers.enable(1);
+    this.sky = new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(Math.PI / 2), new THREE.ShaderMaterial({
+      fog: false, depthWrite: false, side: THREE.DoubleSide,
+      uniforms: { tCloud: { value: cloudTexture() }, uT: { value: 0 }, uC: { value: new THREE.Vector2() } },
+      vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: `uniform sampler2D tCloud; uniform float uT; uniform vec2 uC; varying vec3 vW;
+        void main(){ float cl = texture2D(tCloud, (vW.xz + vec2(uT * 0.5, 0.0)) / 60.0).r;
+          vec3 c = mix(vec3(0.26, 0.18, 0.135), vec3(0.05, 0.055, 0.085), smoothstep(0.0, 180.0, length(vW.xz - uC))) * (0.65 + 0.7 * cl);
+          gl_FragColor = vec4(c, 1.0); }`,
+    }));
+    this.sky.layers.set(1); this.sky.frustumCulled = false; this.sky.renderOrder = -10;
   }
   resize(w, h) { this.rt.setSize(Math.max(64, Math.floor(w * 0.5)), Math.max(64, Math.floor(h * 0.5))); }
   // derived from three's Reflector: mirror the camera about y=0 with an oblique near plane
@@ -120,6 +148,8 @@ export class Wet {
     _q4.z = -1; _q4.w = (1 + pm.elements[10]) / pm.elements[14];
     _clip.multiplyScalar(2 / _clip.dot(_q4));
     pm.elements[2] = _clip.x; pm.elements[6] = _clip.y; pm.elements[10] = _clip.z + 1 - 0.003; pm.elements[14] = _clip.w;
+    if (!this.sky.parent) scene.add(this.sky);
+    this.sky.position.set(_cp.x, 40, _cp.z); this.sky.material.uniforms.uC.value.set(_cp.x, _cp.z); this.sky.material.uniforms.uT.value = this.uniforms.uTime.value;
     const vis = this.hide.map(o => o.visible); this.hide.forEach(o => (o.visible = false));
     const sAuto = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
     const fog = scene.fog;
@@ -130,48 +160,40 @@ export class Wet {
     this.hide.forEach((o, i) => (o.visible = vis[i]));
   }
   // inject wetness + reflection into a MeshStandardMaterial
-  patch(mat, { reflect = 1, puddles = 1, area = [-15, -30, 30, 60] } = {}) {
+  patch(mat, { reflect = 1, puddles = 1, area = [-15, -30, 40, 40], gut = [0, 0, 0.3, 0] } = {}) {
     const U = this.uniforms;
     mat.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, U);
-      sh.uniforms.uArea = { value: new THREE.Vector4(...area) };
+      sh.uniforms.uArea = { value: new THREE.Vector4(...area) }; sh.uniforms.uGut = { value: new THREE.Vector4(...gut) };
       sh.uniforms.uReflect = { value: reflect }; sh.uniforms.uPud = { value: puddles };
       sh.vertexShader = 'uniform mat4 uTexMatrix; varying vec4 vRefl; varying vec3 vWPos;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
         vec4 wp4 = modelMatrix * vec4(transformed, 1.0); vWPos = wp4.xyz; vRefl = uTexMatrix * wp4;`);
-      sh.fragmentShader = `uniform sampler2D tRefl; uniform sampler2D tPuddle; uniform float uTime; uniform float uWet; uniform float uReflOn; uniform vec4 uArea; uniform float uReflect; uniform float uPud;
+      sh.fragmentShader = `uniform sampler2D tRefl; uniform sampler2D tPuddle; uniform float uTime; uniform float uWet; uniform float uReflOn; uniform vec4 uArea; uniform float uReflect; uniform float uPud; uniform vec4 uGut;
         varying vec4 vRefl; varying vec3 vWPos; float gPud;
-        float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-        vec2 ripples(vec2 p){
-          vec2 acc = vec2(0.0);
-          for (int i = 0; i < 2; i++) {
-            vec2 cell = floor(p * (2.4 + float(i))); vec2 f = fract(p * (2.4 + float(i))) - 0.5;
-            float r = h21(cell + float(i) * 7.3); vec2 o = vec2(h21(cell + 3.1), h21(cell + 9.7)) - 0.5;
-            float t = fract(uTime * (0.9 + r * 0.6) + r);
-            vec2 d = f - o * 0.6; float l = length(d);
-            float wave = sin((l - t * 0.5) * 48.0) * (1.0 - t) * smoothstep(0.5 * t + 0.06, 0.5 * t, l) * smoothstep(0.0, 0.02, l);
-            acc += normalize(d + 1e-4) * wave;
-          }
-          return acc;
-        }
       ` + sh.fragmentShader
         .replace('#include <map_fragment>', `#include <map_fragment>
           vec2 puv = (vWPos.xz - uArea.xy) / uArea.zw;
-          gPud = smoothstep(0.5, 0.85, texture2D(tPuddle, puv).r) * uPud * uWet;
-          diffuseColor.rgb *= mix(0.8, 0.7, gPud);`)
+          float pm = texture2D(tPuddle, puv).r * uPud;
+          gPud = smoothstep(0.5, 0.85, pm) * uWet;
+          gPud = max(gPud, 0.9 * uGut.w * uWet * (1.0 - smoothstep(0.0, uGut.z, min(abs(vWPos.x - uGut.x), abs(vWPos.x - uGut.y)))));
+          diffuseColor.rgb *= mix(0.8, 0.7, gPud);
+          float soak = smoothstep(0.3, 0.5, pm) * (1.0 - smoothstep(0.5, 0.62, pm));   // a dark soaked rim: a crisp edge from above
+          diffuseColor.rgb *= 1.0 - 0.2 * soak * uWet;`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
           roughnessFactor = mix(roughnessFactor * mix(1.0, 0.62, uWet), 0.05, gPud);`)
         .replace('#include <opaque_fragment>', `
-          vec2 rip = ripples(vWPos.xz) * gPud;
-          vec4 rc = vRefl; rc.xy += (normal.xy * 0.12 * (1.0 - gPud) + rip * 0.018) * rc.w;
-          vec3 refl = texture2DProj(tRefl, rc).rgb;
+          // the rain never ripples the water (STORY.md: RAIN = SAFE, it's a replay): still mirrors under falling rain
+          vec4 rc = vRefl; rc.xy += normal.xy * 0.12 * (1.0 - gPud) * rc.w;
+          // no reflection pass (phones that can't afford it): puddles still mirror the sodium cloud base, as a flat tone
+          vec3 refl = uReflOn > 0.5 ? texture2DProj(tRefl, rc).rgb : vec3(0.11, 0.08, 0.065);
           float ndv = clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0);
           float fres = 0.05 + 0.95 * pow(1.0 - ndv, 4.0);
           refl += vec3(0.020, 0.026, 0.030) * 2.2 * (0.7 + 0.3 * fres) * (1.0 - smoothstep(0.0, 0.05, dot(refl, vec3(0.333))));
-          float rAmt = mix(0.06, 0.9, gPud) * uWet * uReflect * uReflOn;
+          float rAmt = mix(0.06 * uReflOn, 0.9, gPud) * uWet * uReflect;
           outgoingLight = outgoingLight * (1.0 - rAmt * 0.5) + refl * rAmt * mix(0.45, 1.0, fres);
           #include <opaque_fragment>`);
     };
-    mat.customProgramCacheKey = () => 'wet' + reflect + puddles;
+    mat.customProgramCacheKey = () => 'wet2' + reflect + puddles;
   }
 }
 const _n = new THREE.Vector3(), _rp = new THREE.Vector3(), _cp = new THREE.Vector3(), _rot = new THREE.Matrix4(), _look = new THREE.Vector3(), _view = new THREE.Vector3();
@@ -238,7 +260,7 @@ export function buildLevel(scene, world, wet) {
 
   // Wet asphalt with real-time reflections, puddles and rain ripples
   const street = new THREE.Mesh(new THREE.PlaneGeometry(17, 52), pbr('asphalt_02', 17 / 3.2, 52 / 3.2, { normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: 1.0 }));
-  wet.patch(street.material, { reflect: 1, puddles: 1 });
+  wet.patch(street.material, { reflect: 1, puddles: 1, gut: [-8.3, 8.3, 0.35, 1] });
   street.rotation.x = -Math.PI / 2; street.position.set(0, 0, -1); street.receiveShadow = true; scene.add(street);
   wet.hide.push(street);
   const marks = new THREE.Mesh(new THREE.PlaneGeometry(16, 52), new THREE.MeshStandardMaterial({ map: markingsTexture(), transparent: true, roughness: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
@@ -717,9 +739,10 @@ function buildPier9(C) {
   const statCyl = (x, y, z, r, h) => { const b = new CANNON.Body({ mass: 0, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL }); b.addShape(new CANNON.Cylinder(r, r, h, 8)); b.position.set(x, y, z); world.addBody(b); };
   const mesh = (geo, mat, x, y, z, ry = 0, shadow = true) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.y = ry; if (shadow) { m.castShadow = true; m.receiveShadow = true; } scene.add(m); return m; };
   const floor = (prefix, x0, x1, z0, z1, tile, reflect, puddles, extra = {}) => {
-    const w = x1 - x0, d = z1 - z0;
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), pbr(prefix, w / tile, d / tile, extra));
-    wet.patch(m.material, { reflect, puddles, area: [x0, z0, 30, 60] });
+    const w = x1 - x0, d = z1 - z0, { gut, ...ex } = extra;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), pbr(prefix, w / tile, d / tile, ex));
+    const hh = (k) => { const v = Math.sin(x0 * 12.9898 + z0 * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
+    wet.patch(m.material, { reflect, puddles, area: [x0 + hh(1) * 40, z0 + hh(2) * 40, 40, 40], gut: gut || [0, 0, 0.3, 0] });
     m.rotation.x = -Math.PI / 2; m.position.set((x0 + x1) / 2, 0.001, (z0 + z1) / 2); m.receiveShadow = true; scene.add(m); wet.hide.push(m); return m;
   };
   const decal = (tex, w, h, x, y, z, ry, opacity = 0.9) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, transparent: true, opacity, roughness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })); m.position.set(x, y, z); m.rotation.y = ry; scene.add(m); return m; };
@@ -727,7 +750,7 @@ function buildPier9(C) {
   seed = 9191;
 
   // ---------------- PIER 9 MARKET: a covered night market lane ----------------
-  floor('pavement_03', -7.6, 7.6, -64.4, -26.6, 2.2, 0.55, 0.35);
+  floor('pavement_03', -7.6, 7.6, -64.4, -26.6, 2.2, 0.55, 0.35, { gut: [0, 0, 0.22, 1] });
   block(-28, -7.6, -46, -26.6, 11, ['+z', '+x'], { storeOff: { '+z': -2 } });
   block(7.6, 28, -42, -26.6, 10, ['+z', '-x', '-z'], { storeOff: { '+z': 2 } });
   block(7.6, 28, -66, -48, 13, ['-x', '+z'], { noStore: ['-x'] });
@@ -765,7 +788,7 @@ function buildPier9(C) {
   sign('EVERYONE COUNTS', '#e8f0ff', false, -7.64, 10.5, -52, Math.PI / 2, 7, 1.3);
 
   // ---------------- GUT LANE: a narrow wet service alley ----------------
-  floor('asphalt_02', -4.6, 4.6, -92.4, -64.4, 3.2, 1, 1, { normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: 1.0 });
+  floor('asphalt_02', -4.6, 4.6, -92.4, -64.4, 3.2, 1, 1, { normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: 1.0, gut: [0, 0, 0.3, 1] });
   block(-28, -4.6, -92.4, -64.4, 12, ['+x', '+z', '-z'], { noStore: ['+x', '+z'], storeW: 6, lit: 0.22 });
   block(4.6, 30, -76, -64.4, 9, ['-x', '+z', '-z', '+x'], { noStore: ['-x', '+z'], storeW: 5, lit: 0.22 });
   block(4.6, 30, -92.4, -82, 11, ['-x', '+z', '-z', '+x'], { noStore: ['-x'], storeW: 5, lit: 0.22 });

@@ -112,7 +112,7 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 const grade = new ShaderPass(GradeShader); composer.addPass(grade);
 const smaa = new SMAAPass(); composer.addPass(smaa);
-const wet = new Wet();
+const wet = new Wet(); G.wet = wet;
 
 let DPR = Math.min(window.devicePixelRatio || 1, 2);
 canvas.addEventListener('webglcontextlost', (e) => {
