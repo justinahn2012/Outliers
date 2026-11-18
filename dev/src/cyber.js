@@ -8,6 +8,7 @@ import { ZONES } from './level.js';
 import * as CANNON from 'cannon-es';
 import { G, GRP, ALL } from './state.js';
 import { registerTemplate } from './props.js';
+import { drawLedger, drawTally, drawPixel, ledgerFit } from './ledger.js';
 
 const CYAN = new THREE.Color(0x19d3e6), PINK = new THREE.Color(0xff2e7a), AMBER = new THREE.Color(0xff9a1f), CIVIC = new THREE.Color(0xbff6ff), VIOLET = new THREE.Color(0x9b7bff);
 const CENSUS_ZONES = new Set([1, 6]);          // checkpoint plaza, rail yard: Census ground
@@ -73,7 +74,8 @@ function buildTagAtlas() {
     else if (kind === 'dial') { x.arc(15, 16, 10, 0, 6.3); x.stroke(); x.beginPath(); x.moveTo(15, 16); x.lineTo(22, 9); x.stroke(); }
     else if (kind === 'dots') { for (let k = 0; k < 5; k++) { x.beginPath(); x.arc(15 + 9 * Math.cos(k * 1.256), 16 + 9 * Math.sin(k * 1.256), 2.2, 0, 6.3); x.fill(); } }
   };
-  const census = (i, kind, label) => slot(i, () => { glyph(kind); x.font = mono(11); x.textBaseline = 'top'; x.fillText(label, 32, 1); x.font = mono(9); x.globalAlpha = 0.7; x.fillText(id(), 32, 12); x.globalAlpha = 1; });
+  // Census records speak LEDGER, with their tally code under the name
+  const census = (i, kind, label) => slot(i, () => { glyph(kind); drawLedger(x, label, 32, 2, 10, '#fff', { ghost: 0.12 }); x.globalAlpha = 0.75; drawTally(x, String(1000 + Math.floor(R() * 8999)), 33, 13, 7, '#fff'); x.globalAlpha = 1; });
   census(0, 'solid', 'COUNTER'); census(1, 'chevron', 'MARKSMAN'); census(2, 'dash', 'LOBBER'); census(3, 'double', 'WARDEN');
   census(4, 'diamond', 'CLERK'); census(5, 'dial', 'AUDITOR'); census(6, 'solid', 'LAMPLIGHTER');
   slot(8, () => { x.lineWidth = 3; for (const [a, b, sx, sy] of [[2, 2, 1, 1], [126, 2, -1, 1], [2, 30, 1, -1], [126, 30, -1, -1]]) { x.beginPath(); x.moveTo(a + sx * 14, b); x.lineTo(a, b); x.lineTo(a, b + sy * 9); x.stroke(); } });
@@ -81,14 +83,15 @@ function buildTagAtlas() {
     // NULL in blocky pixels, with dropped cells
     const P5 = { N: ['10001', '11001', '10101', '10011', '10001'], U: ['10001', '10001', '10001', '10001', '01110'], L: ['10000', '10000', '10000', '10000', '11111'] };
     [...'NULL'].forEach((ch, k) => P5[ch].forEach((row, ry) => [...row].forEach((v, rx) => { if (v === '1' && R() > 0.12) x.fillRect(30 + k * 18 + rx * 3, 8 + ry * 3, 3, 3); }))); });
-  slot(10, () => { x.font = mono(14); x.textBaseline = 'middle'; x.textAlign = 'center'; x.fillText('COUNTED OUT', 64, 16); x.fillRect(8, 26, 112, 2); });
+  slot(10, () => { drawLedger(x, 'COUNTED OUT', 64, 6, 14, '#fff', { ghost: 0.12, align: 'center' }); x.fillRect(8, 26, 112, 2); });
   slot(11, () => { glyph('dots'); x.font = mono(10); x.textBaseline = 'top'; x.fillText('WITNESS ·', 32, 2); x.fillText('REPORTING', 32, 13); });
   for (let k = 0; k < 7; k++) slot(12 + k, () => { x.font = mono(10); x.textBaseline = 'middle'; x.globalAlpha = 0.9; x.fillText(`ID ${id().slice(3)}`, 8, 16); x.fillRect(8, 25, 30 + R() * 50, 1); });
   slot(19, () => { x.font = mono(10); x.textBaseline = 'top'; x.fillText('HALDEN · UNLISTED', 6, 4); x.globalAlpha = 0.6; x.fillText('NO CENSUS RECORD', 6, 17); });
-  slot(29, () => { x.font = mono(14); x.textBaseline = 'middle'; x.textAlign = 'center'; x.fillText('NO RECORD', 64, 16); x.lineWidth = 2; x.strokeRect(10, 3, 108, 26); });
-  slot(20, () => { x.lineWidth = 2; x.strokeRect(2, 2, 124, 28); x.font = mono(11); x.textBaseline = 'top'; x.fillText('LOCKED · ORD 7781', 8, 5); });
+  slot(29, () => { drawLedger(x, 'NO RECORD', 64, 8, 14, '#fff', { ghost: 0.12, align: 'center' }); x.lineWidth = 2; x.strokeRect(10, 3, 108, 26); });
+  slot(20, () => { x.lineWidth = 2; x.strokeRect(2, 2, 124, 28); drawLedger(x, 'LOCKED ORD 7781', 64, 16 - ledgerFit('LOCKED ORD 7781', 110, 11) / 2, ledgerFit('LOCKED ORD 7781', 110, 11), '#fff', { ghost: 0.12, align: 'center' }); });
   const objs = ['BIN', 'DRUM', 'CRATE', 'BARRIER', 'VEHICLE', 'BAG', 'CONTAINER', 'DEBRIS'];
-  objs.forEach((o, k) => slot(21 + k, () => { x.font = mono(11); x.textBaseline = 'middle'; x.fillText(`OBJ ${44 + k}-${110 + k * 7} · ${o}`, 6, 16); }));
+  // her records are in her own pixel face
+  objs.forEach((o, k) => slot(21 + k, () => { drawPixel(x, `OBJ ${44 + k}-${110 + k * 7}`, 4, 2, 2, '#fff'); drawPixel(x, (o.length > 8 ? '·' : '· ') + o, 4, 17, 2, '#fff'); }));
   const t = new THREE.CanvasTexture(c); t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; return t;
 }
 const tagRect = (i) => [(i % 8) / 8, 1 - (Math.floor(i / 8) + 1) / 8, 1 / 8, 1 / 8];
@@ -747,7 +750,7 @@ export function makeCyber(scene, level, wet, world) {
       const x = r.c.getContext('2d'); x.clearRect(0, 0, 256, 256); x.strokeStyle = x.fillStyle = '#f00';
       x.lineWidth = 3; x.beginPath(); x.arc(128, 128, 120, 0, 6.3); x.stroke(); x.lineWidth = 1.5; x.beginPath(); x.arc(128, 128, 112, 0, 6.3); x.stroke();
       for (let k = 0; k < 60; k++) { const a = k / 60 * 6.283, l = k % 5 ? 4 : 9; x.beginPath(); x.moveTo(128 + Math.cos(a) * 112, 128 + Math.sin(a) * 112); x.lineTo(128 + Math.cos(a) * (112 - l), 128 + Math.sin(a) * (112 - l)); x.stroke(); }
-      x.font = 'bold 20px "Courier New", monospace'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(`COUNT ${n.toLocaleString('en-US')} / 2,114`, 128, 214);
+      drawLedger(x, `COUNT ${n} / 2114`, 128, 200, 16, '#f00', { ghost: 0.12, align: 'center' });
       r.t.needsUpdate = true; r.shown = n;
     };
     C.ticks.push((dt, t) => {
@@ -829,8 +832,8 @@ export function makeCyber(scene, level, wet, world) {
     };
     // the liftable versions are the fliers themselves: she can pull either out of the sky
     registerTemplate('skydrone', mkDrone(CYAN)); { const t = mkSpinner(false); scene.remove(t.userData.pool); registerTemplate('spinner', t); }
-    for (let i = 0; i < 3; i++) { const d = mkDrone(i % 2 ? PINK : CYAN); addAir(d, 'drone', i % 2 ? PINK : CYAN); d.visible = false; scene.add(d); fliers.push({ o: d, on: false, t: 0, v: new THREE.Vector3(), cd: R() * 3 }); }
-    for (let i = 0; i < 2; i++) { const s = mkSpinner(false); addAir(s, 'spinner', CYAN); s.visible = false; s.userData.pool.visible = false; scene.add(s); fliers.push({ o: s, on: false, t: 0, v: new THREE.Vector3(), cd: 4 + R() * 6 }); }
+    for (let i = 0; i < 3; i++) { const d = mkDrone(i % 2 ? PINK : CYAN); addAir(d, 'drone', i % 2 ? PINK : CYAN); d.visible = false; scene.add(d); fliers.push({ o: d, on: false, t: 0, v: new THREE.Vector3(), cd: 2 + i * 7 + R() * 4 }); }
+    for (let i = 0; i < 2; i++) { const s = mkSpinner(false); addAir(s, 'spinner', CYAN); s.visible = false; s.userData.pool.visible = false; scene.add(s); fliers.push({ o: s, on: false, t: 0, v: new THREE.Vector3(), cd: 9 + i * 10 + R() * 6 }); }
   }
   // they fly the streets (never through a building): along the long axis of the street she's in, offset across it
   const corridor = (center) => {
@@ -839,13 +842,19 @@ export function makeCyber(scene, level, wet, world) {
     return r;
   };
   const showAir = (u, on) => { u.shadow.visible = on; for (const r of u.rings) r.visible = on; if (u.pool) u.pool.visible = on; };
+  // traffic is sparse (Justin: the rate was too much): a shared gap between launches, at most two up when calm, one in a fight
+  let launchGap = 4 + R() * 4;
   const flyUpdate = (dt, center) => {
     const calm = !G.enemies || !G.enemies.some(e => e.alive && !e.dead);
     const t = G.rt || 0;
+    launchGap -= dt;
+    let up = 0; for (const f of fliers) if (f.on) up++;
     for (const f of fliers) {
       const o = f.o, u = o.userData;
       if (!f.on) {
         f.cd -= dt; if (f.cd > 0) continue;
+        if (launchGap > 0 || up >= (calm ? 2 : 1)) continue;
+        launchGap = calm ? 6 + Math.random() * 6 : 12 + Math.random() * 10; up++;
         const r = corridor(center); if (!r) { f.cd = 2; continue; }
         const alongZ = (r.z1 - r.z0) >= (r.x1 - r.x0), dir = Math.random() < 0.5 ? 1 : -1;
         const lo = alongZ ? Math.max(r.x0 + 1.2, center.x - 5) : Math.max(r.z0 + 1.2, center.z - 5), hi = alongZ ? Math.min(r.x1 - 1.2, center.x + 5) : Math.min(r.z1 - 1.2, center.z + 3);
@@ -865,7 +874,7 @@ export function makeCyber(scene, level, wet, world) {
       u.shadow.position.set(o.position.x, 0.023, o.position.z);   // straight below, inside its own light pool: the camera's parallax separates car from marks u.shadow.rotation.z = -o.rotation.y;
       u.beam.scale.set(1, h - (u.big ? 0.35 : 0.3), 1); u.beam.position.y = u.big ? -0.35 : -0.3; u.beam.material.uniforms.uTime.value = t;
       u.rings.forEach((rg, k) => { const ph = (f.t * (u.big ? 1.3 : 1.8) + k / u.rings.length) % 1, rad = (u.big ? 0.8 : 0.3) + ph * (u.big ? 3.4 : 1.4); rg.position.set(o.position.x, 0.024, o.position.z); rg.scale.setScalar(rad); rg.material.uniforms.opacity.value = (1 - ph) * (1 - ph) * (u.big ? 0.22 : 0.14); });
-      if (Math.hypot(o.position.x - center.x, o.position.z - center.z) > 32 && f.t > 1) { f.on = false; o.visible = false; showAir(u, false); f.cd = u.kind === 'drone' ? 1 + Math.random() * 4 : (calm ? 6 + Math.random() * 4 : 9 + Math.random() * 6); }
+      if (Math.hypot(o.position.x - center.x, o.position.z - center.z) > 32 && f.t > 1) { f.on = false; o.visible = false; showAir(u, false); f.cd = u.kind === 'drone' ? (calm ? 10 + Math.random() * 8 : 16 + Math.random() * 10) : (calm ? 16 + Math.random() * 10 : 28 + Math.random() * 14); }
     }
   };
 
@@ -875,7 +884,7 @@ export function makeCyber(scene, level, wet, world) {
     f.on = false; o.visible = false; showAir(u, false); f.cd = 6 + Math.random() * 6;
     return { type: u.kind === 'drone' ? 'skydrone' : 'spinner', x: o.position.x, y: o.position.y, z: o.position.z, rotY: o.rotation.y, vx: f.v.x, vz: f.v.z };
   };
-  C.fliers = fliers; C.fly = (i) => { const f = fliers[i]; if (f && !f.on) f.cd = 0; };
+  C.fliers = fliers; C.fly = (i) => { const f = fliers[i]; if (f && !f.on) { f.cd = 0; launchGap = 0; } };
   C.update = (dt, center, hero) => {
     const t = G.rt || 0;
     for (const m of C.mats) { if (m.uniforms.uTime) m.uniforms.uTime.value = t; if (m.uniforms.uHero && hero) m.uniforms.uHero.value.copy(hero); }

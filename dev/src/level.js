@@ -4,6 +4,7 @@ import { G, GRP, ALL, rand } from './state.js';
 import { A } from './assets.js';
 import { makeFacadeKit } from './facade.js';
 import { buildLandmarks } from './landmarks.js';
+import { drawLedger, drawTally, ledgerFit } from './ledger.js';
 
 function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
 let seed = 1337;
@@ -619,11 +620,19 @@ export function containerTexture(base, label) {
   x.font = '700 18px Inter, Arial, sans-serif'; x.fillText('CSFU 409117 · 22G1', 256, 150);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
+let _ledgerCol = null;
+function ledgerColumnTexture() {
+  if (_ledgerCol) return _ledgerCol;
+  const [c, x] = canvas(128, 1024); x.clearRect(0, 0, 128, 1024);
+  for (let k = 0; k < 20; k++) drawLedger(x, String(1000 + Math.floor(Math.random() * 8999)), 10, 12 + k * 51, 30, '#fff', { ghost: 0.12 });
+  const t = new THREE.CanvasTexture(c); t.wrapT = THREE.RepeatWrapping; return (_ledgerCol = t);
+}
 function gateTextTexture() {
   const [c, x] = canvas(1024, 128);
   x.clearRect(0, 0, 1024, 128);
-  x.font = '800 44px Inter, Arial, sans-serif'; x.textBaseline = 'middle'; x.fillStyle = '#fff';
-  x.fillText('CENSUS CHECKPOINT  ·  PRESENT YOUR TALLY  ·  ', 8, 64);
+  // Census text is always LEDGER (14-segment, ghosted segments) with a tally code
+  const wpx = drawTally(x, '78', 12, 49, 30, '#fff');
+  drawLedger(x, 'CENSUS CHECKPOINT · PRESENT YOUR TALLY', 26 + wpx, 49, 30, '#fff', { ghost: 0.1 });
   const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; return t;
 }
 function decalTexture(draw, w = 512, h = 256) { const [c, x] = canvas(w, h); x.clearRect(0, 0, w, h); draw(x, w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
@@ -640,9 +649,9 @@ function makeGate(scene, world, groundMat, x0, x1, z, alongZ = false) {
   const tex = gateTextTexture();
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false,
-    uniforms: { uT: { value: 0 }, uOpen: { value: 0 }, tText: { value: tex }, uRep: { value: w / 9 } },
+    uniforms: { uT: { value: 0 }, uOpen: { value: 0 }, tText: { value: tex }, uRep: { value: w / 9 }, tCol: { value: ledgerColumnTexture() }, uW: { value: w } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `uniform float uT; uniform float uOpen; uniform sampler2D tText; uniform float uRep; varying vec2 vUv;
+    fragmentShader: `uniform float uT; uniform float uOpen; uniform sampler2D tText; uniform float uRep; uniform sampler2D tCol; uniform float uW; varying vec2 vUv;
       float hh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       void main(){
         vec2 uv = vUv;
@@ -654,12 +663,21 @@ function makeGate(scene, world, groundMat, x0, x1, z, alongZ = false) {
         float edge = smoothstep(0.0, 0.03, uv.y) * smoothstep(1.0, 0.85, uv.y);
         float rim = step(uv.y, 0.025) * 2.0 + step(0.975, uv.x) + step(uv.x, 0.025);
         float alive = step(uOpen * 1.02, hh(floor(vUv * vec2(uRep * 10.0, 9.0))));
-        vec3 col = vec3(1.0, 0.5, 0.12) * ((0.12 * scan + grid) * edge + txt * 1.3 + rim * 0.6);
+        // the ledger column: record numbers rising at 0.5 m/s near each end of the cordon
+        float cw = 0.9 / uW, colA = step(0.04, uv.x) * step(uv.x, 0.04 + cw), colB = step(0.96 - cw, uv.x) * step(uv.x, 0.96);
+        float cu = colA > 0.5 ? (uv.x - 0.04) / cw : (uv.x - (0.96 - cw)) / cw;
+        float ledger = (colA + colB) * texture2D(tCol, vec2(cu, fract(uv.y * 3.4 / 8.0 - uT * 0.5 / 8.0))).a * step(0.55, uv.y) * 0.9;
+        vec3 col = vec3(1.0, 0.5, 0.12) * ((0.12 * scan + grid) * edge + txt * 1.3 + rim * 0.6 + ledger);
         gl_FragColor = vec4(col * alive, 1.0);
       }`,
   });
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, H), mat); m.renderOrder = 26; scene.add(m);
   if (alongZ) { m.position.set(z, H / 2, cx); m.rotation.y = Math.PI / 2; } else m.position.set(cx, H / 2, z);
+  const [hc, hx] = canvas(1024, 80); const htex = new THREE.CanvasTexture(hc); htex.anisotropy = 4;
+  const header = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(w, 5.6), Math.min(w, 5.6) / 12.8), new THREE.MeshBasicMaterial({ map: htex, color: new THREE.Color(2.0, 1.0, 0.25), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide }));
+  header.position.copy(m.position); header.position.y = H + 0.42; header.rotation.y = m.rotation.y; header.renderOrder = 27; scene.add(header);
+  const paintHeader = (n) => { const t = 'CORDON ORD 7781 · RENEWED ×' + n, h = ledgerFit(t, 980, 52); hx.clearRect(0, 0, 1024, 80); drawLedger(hx, t, 512, 40 - h / 2, h, '#fff', { ghost: 0.1, align: 'center' }); htex.needsUpdate = true; };
+  paintHeader(6);
   const postMat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.5, metalness: 0.7, emissive: 0xff7a20, emissiveIntensity: 0 });
   const posts = [];
   for (const px of [x0, x1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.28, H + 0.3, 0.28), postMat); if (alongZ) p.position.set(z, (H + 0.3) / 2, px); else p.position.set(px, (H + 0.3) / 2, z); p.castShadow = true; scene.add(p); posts.push(p); }
@@ -671,13 +689,14 @@ function makeGate(scene, world, groundMat, x0, x1, z, alongZ = false) {
     x0, x1, z, cx, alongZ, open: false, k: 0, inWorld: true, body, flick: 0,
     // Rewrite on a held cordon: it thins for a beat, then every chip renewing it writes it straight back
     flicker() { this.flick = 0.55; },
+    renewed(n) { paintHeader(n); },
     get pos() { return alongZ ? new THREE.Vector3(z, 0, cx) : new THREE.Vector3(cx, 0, z); },
     openNow() { if (this.open) return; this.open = true; if (this.inWorld) { world.removeBody(body); this.inWorld = false; } },
-    snapOpen() { this.openNow(); this.k = 1; mat.uniforms.uOpen.value = 1; m.visible = false; },
-    close() { this.open = false; this.k = 0; mat.uniforms.uOpen.value = 0; m.visible = true; if (!this.inWorld) { world.addBody(body); this.inWorld = true; } },
+    snapOpen() { this.openNow(); this.k = 1; mat.uniforms.uOpen.value = 1; m.visible = false; header.visible = false; },
+    close() { this.open = false; this.k = 0; mat.uniforms.uOpen.value = 0; m.visible = true; header.visible = true; if (!this.inWorld) { world.addBody(body); this.inWorld = true; } },
     update(dt) {
       mat.uniforms.uT.value = G.rt;
-      if (this.open && this.k < 1) { this.k = Math.min(1, this.k + dt * 1.6); mat.uniforms.uOpen.value = this.k; if (this.k >= 1) m.visible = false; }
+      if (this.open && this.k < 1) { this.k = Math.min(1, this.k + dt * 1.6); mat.uniforms.uOpen.value = this.k; header.material.opacity = 1 - this.k; if (this.k >= 1) { m.visible = false; header.visible = false; } }
       postMat.emissiveIntensity = this.open ? 0 : 0.6 + Math.sin(G.rt * 5) * 0.2;
       if (!this.open && this.flick > 0) { this.flick = Math.max(0, this.flick - dt); mat.uniforms.uOpen.value = 0.8 * Math.min(1, this.flick * 3) * (0.55 + 0.45 * Math.sin(G.rt * 55)); }
     },

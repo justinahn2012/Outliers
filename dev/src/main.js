@@ -553,6 +553,7 @@ function rewriteGate(g, at) {
   if (cyber) { const gp = g.pos, gw = g.x1 - g.x0, gy = g.alongZ ? Math.PI / 2 : 0; cyber.writeBorder(gp.x, 0.05, gp.z, gw, 3.6, gy); cyber.later(0.55, () => cyber.healSweep(gp.x, gp.z, gw, 0.4, gy, 0.05, 3.8)); }
   const n = G.enemies.filter(e => e.alive && !e.dead).length + RELAYS.filter(R => R.alive).length;
   num(_v2.set(at.x, 2.6, at.z), n ? `RENEWED ×${n}` : 'SWEEP STILL OPEN', 'psi', 1.3);
+  if (g.renewed) g.renewed(n);
   voxelPuff(at.x, 1.6, at.z, 14, 1.5, 1.5, 0.08, 0.5); sfx.stamp(); G.glitch = Math.max(G.glitch || 0, 0.25);
   if (!G.saidGate) { G.saidGate = true; sayList(CHAPTER.rewriteGate); }
 }
