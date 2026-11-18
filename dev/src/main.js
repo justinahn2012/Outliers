@@ -2052,6 +2052,7 @@ function updateWaves(dt) {
   const hp = heroCenter();
   updateFragments(dt);
   updateCivs(dt);
+  safe(() => updateCrowd(dt));
   updateLocks(dt);
   updateChase(dt);
   if (G.zState === 'fight') {
@@ -2233,6 +2234,72 @@ function makeCiv(x, z, i) {
   const v = { c, root, state: 'caged', t: 0, path: [[x, z + 2.4], [-10.5, -55], [-6, -55], [-2, -48], [-1, -40]], wi: 0, fade: 1 };
   CIVS.push(v); return v;
 }
+
+// ======================= Consensus extras: people on the street (Harrow and the market only) =======================
+// Counted citizens going about the evening. They clear the street when the Census starts a fight, and once in a while one of
+// them skips a frame: a render seam (story seed, never more than that in Act 1).
+const CROWD = []; G.crowd = CROWD; CROWD.zone = -1; CROWD.calm = 0; CROWD.spawnT = 0; CROWD.seamT = 15;
+const CROWD_ZONES = {
+  0: { lanes: [[-10.5, -24, 22], [10.5, -24, 22], [-9.7, -24, 22], [9.7, -24, 22]], n: 5 },
+  3: { lanes: [[-3.6, -61, -29.5], [3.6, -61, -29.5], [-2.4, -61, -29.5], [2.4, -61, -29.5]], n: 5, browse: 6.0 },
+};
+const TINTS = [[1, 1, 1], [1.12, 0.95, 0.85], [0.85, 0.95, 1.1], [0.95, 1.05, 0.92], [1.08, 1.0, 1.08]];
+let crowdN = 0;
+function spawnCitizen(spec, anywhere) {
+  const lane = spec.lanes[Math.floor(Math.random() * spec.lanes.length)], [lx, z0, z1] = lane;
+  const fem = Math.random() < 0.5, i = crowdN++;
+  const c = makeCharacter(fem ? 'civ_f' : 'civ_m', fem ? { idle: 'f_idle_neutral_01', walk: 'f_walk_cool_01', run: 'f_run_fast_01' } : { idle: 'm_idle_neutral_01', walk: 'm_walk_cool_01', run: 'm_run_fast_01' });
+  const tint = TINTS[i % TINTS.length];
+  for (const m of c.mats) if (m.color && !(m.alphaTest > 0) && /body/.test(m.name)) m.color.multiply(new THREE.Color(...tint));
+  c.obj.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false; } });
+  const root = new THREE.Group(); root.add(c.obj); scene.add(root);
+  const dir = Math.random() < 0.5 ? 1 : -1, z = anywhere ? z0 + Math.random() * (z1 - z0) : (dir > 0 ? z0 : z1);
+  root.position.set(lx + (Math.random() - 0.5) * 0.4, 0, z);
+  const v = { c, root, lane, dir, state: 'walk', t: 0, pause: 0, side: 0, seam: 0, fade: anywhere ? 1 : 0, tagI: i, speed: 1.05 + Math.random() * 0.35 };
+  CROWD.push(v); return v;
+}
+function clearCrowd() { for (const v of CROWD) scene.remove(v.root); CROWD.length = 0; }
+function updateCrowd(dt) {
+  const spec = CROWD_ZONES[G.zone];
+  if (!spec || G.mode !== 'play') { if (CROWD.length) clearCrowd(); CROWD.zone = -1; return; }
+  if (CROWD.zone !== G.zone) { clearCrowd(); CROWD.zone = G.zone; CROWD.calm = 0; CROWD.filled = false; }
+  const fight = G.enemies.some(e => e.alive && !e.dead && e.state !== 'spawn');
+  CROWD.calm = fight ? 0 : CROWD.calm + dt;
+  if (!fight && CROWD.length < spec.n) {
+    if (!CROWD.filled) { CROWD.filled = true; while (CROWD.length < spec.n) spawnCitizen(spec, true); }      // the street is already busy when you arrive
+    else if (CROWD.calm > 2 && (CROWD.spawnT -= dt) <= 0) { spawnCitizen(spec, false); CROWD.spawnT = 2 + Math.random() * 3; }
+  }
+  CROWD.seamT -= dt;
+  if (CROWD.seamT <= 0 && CROWD.length) { CROWD[Math.floor(Math.random() * CROWD.length)].seam = 0.1; CROWD.seamT = 16 + Math.random() * 8; }
+  const hp = hero.body.position;
+  for (const v of [...CROWD]) {
+    const [lx, z0, z1] = v.lane, r = v.root;
+    v.t += dt; let speed = 0;
+    if (fight && v.state !== 'flee') { v.state = 'flee'; v.dir = (r.position.z - z0) < (z1 - r.position.z) ? -1 : 1; }
+    if (v.state === 'flee') { speed = 3.4; v.fade = Math.min(1, v.fade + dt); }
+    else if (v.pause > 0) { v.pause -= dt; r.rotation.y += ((lx < 0 ? -Math.PI / 2 : Math.PI / 2) - r.rotation.y) * Math.min(1, dt * 4); }
+    else {
+      speed = v.speed; v.fade = Math.min(1, v.fade + dt * 1.5);
+      if (spec.browse && Math.random() < dt / spec.browse) v.pause = 2 + Math.random() * 2.5;     // stop at a stall
+    }
+    if (speed > 0) {
+      // step aside for her
+      const dxh = hp.x - r.position.x, dzh = hp.z - r.position.z, dh = Math.hypot(dxh, dzh);
+      v.side += ((dh < 1.4 ? -Math.sign(dxh || 1) * 0.9 : 0) - v.side) * Math.min(1, dt * 3);
+      r.position.z += v.dir * speed * dt; r.position.x += ((lx + v.side) - r.position.x) * Math.min(1, dt * 2);
+      r.rotation.y = v.dir > 0 ? 0 : Math.PI;
+      const end = v.dir > 0 ? z1 : z0;
+      if ((v.dir > 0 && r.position.z >= end) || (v.dir < 0 && r.position.z <= end)) {
+        if (v.state === 'flee') { scene.remove(r); CROWD.splice(CROWD.indexOf(v), 1); continue; }
+        v.dir = -v.dir;
+      }
+    }
+    if (v.seam > 0) { v.seam -= dt; r.visible = false; } else r.visible = true;
+    r.scale.setScalar(0.6 + 0.4 * v.fade);
+    blendLocomotion(v.c, speed, dt, 1.45, 5.0); v.c.mixer.update(dt);
+  }
+}
+
 function removeCiv(v) { scene.remove(v.root); const i = CIVS.indexOf(v); if (i >= 0) CIVS.splice(i, 1); }
 function updateCivs(dt) {
   if (!CAGES.length) return;

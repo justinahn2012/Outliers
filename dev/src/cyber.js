@@ -384,7 +384,7 @@ export function makeCyber(scene, level, wet, world) {
       A.aPos.setXYZ(n, x, y, z); A.aSize.setXY(n, w, h); A.aCell.setXYZW(n, r[0], r[1], r[2], r[3]); A.aCol.setXYZW(n, col.r, col.g, col.b, alpha); A.aHp.setXY(n, hp, reveal); n++;
     };
     const state = new WeakMap();
-    const CEN = new THREE.Color(0xff9a1f).multiplyScalar(1.6), CIV = new THREE.Color(0xdcebff), WIT = new THREE.Color(0xf4f4f4).multiplyScalar(1.2), NUL = new THREE.Color(0xb39bff).multiplyScalar(1.3), AUD = new THREE.Color(0xff3a2a).multiplyScalar(1.6);
+    const CEN = new THREE.Color(0xff9a1f).multiplyScalar(1.6), CIV = new THREE.Color(0xdcebff), CIVIC_TAG = new THREE.Color(0xbff6ff), WIT = new THREE.Color(0xf4f4f4).multiplyScalar(1.2), NUL = new THREE.Color(0xb39bff).multiplyScalar(1.3), AUD = new THREE.Color(0xff3a2a).multiplyScalar(1.6);
     const update = (dt) => {
       n = 0; const t = G.rt || 0;
       for (const e of G.enemies || []) {
@@ -401,6 +401,10 @@ export function makeCyber(scene, level, wet, world) {
         if (e.type === 'informant') { add(b.x, y + bob, b.z, 1.5, 0.375, TAG.census.informant, WIT, 0.9, e.hp / e.maxHp, st.rev); continue; }
         const w = boss ? 3.2 : 1.5;
         add(b.x, y + bob, b.z, w, w / 4, TAG.census[e.type] ?? 0, e.type === 'auditor' ? AUD : CEN, 0.85 * hit, Math.max(0, e.hp / e.maxHp), st.rev);
+      }
+      for (const v of G.crowd || []) {                                 // counted citizens: a faint civic ID
+        if (!v.root.visible) continue; const p = v.root.position;
+        add(p.x, 2.15, p.z, 1.1, 0.275, TAG.civ + (v.tagI % 7), CIVIC_TAG, 0.32 * v.fade);
       }
       for (const v of G.civs || []) {                                  // Moth's uncounted carry no Census record: a Halden tag instead
         if (v.fade <= 0.01) continue; const p = v.root.position;
