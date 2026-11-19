@@ -17,6 +17,7 @@ import { staticBatch, mergeGroupByMaterial } from './batch.js';
 import { makeTrails } from './trails.js';
 import { makeTally } from './tally.js';
 import { makeTape } from './tape.js';
+import { makeFurniture } from './furniture.js';
 import { makeProp, removeProp, setGlow, applyDamageLook, populateZone, DEFS } from './props.js';
 import { createHero, updateHeroVisual, blendLocomotion } from './hero.js';
 import { makeScarf } from './scarf.js';
@@ -185,6 +186,7 @@ async function boot() {
   }
   buildEnvironment(renderer, scene);
   level = buildLevel(scene, world, wet); G.level = level; level.facade.sfx = sfx;
+  G.furniture = makeFurniture(scene, world);
   // breaking glass is a reward beat: cold glitter (not metal sparks) and a pale flash ring on the ground (lighting Fix 10)
   level.facade.onShatter = (P) => {
     for (let i = 0; i < 40; i++) { const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 4, u = Math.random(); FX.add.emit(P.c.x + (Math.random() - 0.5) * P.w * 0.8, P.c.y + (Math.random() - 0.5) * P.h * 0.8, P.c.z, Math.cos(a) * sp + P.n.x * 2, u * 3, Math.sin(a) * sp + P.n.z * 2, 1.6, 1.8, 2.0, 0.4 + Math.random() * 0.5, 0.05, 0.02, 18, 1.5); }

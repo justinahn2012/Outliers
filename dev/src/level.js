@@ -132,7 +132,7 @@ export class Wet {
       vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
       fragmentShader: `uniform sampler2D tCloud; uniform float uT; uniform vec2 uC; varying vec3 vW;
         void main(){ float cl = texture2D(tCloud, (vW.xz + vec2(uT * 0.5, 0.0)) / 60.0).r;
-          vec3 c = mix(vec3(0.26, 0.18, 0.135), vec3(0.05, 0.055, 0.085), smoothstep(0.0, 180.0, length(vW.xz - uC))) * (0.65 + 0.7 * cl);
+          vec3 c = mix(vec3(0.2, 0.14, 0.105), vec3(0.045, 0.05, 0.075), smoothstep(0.0, 180.0, length(vW.xz - uC))) * (0.65 + 0.7 * cl);
           gl_FragColor = vec4(c, 1.0); }`,
     }));
     this.sky.layers.set(1); this.sky.frustumCulled = false; this.sky.renderOrder = -10;

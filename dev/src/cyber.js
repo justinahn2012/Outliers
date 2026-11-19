@@ -510,19 +510,24 @@ export function makeCyber(scene, level, wet, world) {
   {
     const rects = allRects.map(r => new THREE.Vector4(r.x0, r.x1, r.z0, r.z1));
     while (rects.length < 16) rects.push(new THREE.Vector4(1e5, 1e5, 1e5, 1e5));
-    const mat = new THREE.ShaderMaterial({ uniforms: { uR: { value: rects.slice(0, 16) }, uTime: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    const mat = new THREE.ShaderMaterial({ uniforms: { uR: { value: rects.slice(0, 16) }, uTime: { value: 0 }, uF: { value: new THREE.Vector2(6, 12) } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
-      fragmentShader: `uniform vec4 uR[16]; uniform float uTime; varying vec3 vW;
+      fragmentShader: `uniform vec4 uR[16]; uniform float uTime; uniform vec2 uF; varying vec3 vW;
         float hs(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         void main(){
           float d = 1e5; for (int i = 0; i < 16; i++) { vec4 r = uR[i]; vec2 q = max(vec2(r.x - vW.x, vW.x - r.y), 0.0); vec2 q2 = max(vec2(r.z - vW.z, vW.z - r.w), 0.0); d = min(d, length(vec2(max(q.x, q.y), max(q2.x, q2.y)))); }
-          float fade = smoothstep(6.0, 12.0, d);
+          float fade = smoothstep(uF.x, uF.y, d);
           vec2 c = floor(vW.xz / 2.0), f = fract(vW.xz / 2.0);
           float drop = step(0.92, hs(c + floor(uTime / 2.0) * 7.0));
           float ln = max(step(f.x, 0.015), step(f.y, 0.015));
           gl_FragColor = vec4(vec3(0.75, 0.96, 1.0) * 0.1 * ln * fade * (1.0 - drop), 1.0);
         }` });
     C.mats.push(mat);
+    // and on land: the same grid on the ground past the playable edge, fading in over 6 m, so the gaps between blocks
+    // read as "nothing is agreed out there" instead of black (cyberpunk_addendum.md #9)
+    { const lm = mat.clone(); lm.uniforms = { uR: mat.uniforms.uR, uTime: mat.uniforms.uTime, uF: { value: new THREE.Vector2(0, 6) } }; C.mats.push(lm);
+      for (const [x0, x1, z0, z1] of [[-45, 95, -92.4, 25], [-20.3, 95, -130.3, -92.4], [40, 80, -136, -130.3]]) {   // land only: the sea has its own grid
+        const g = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), lm); g.rotation.x = -Math.PI / 2; g.position.set((x0 + x1) / 2, 0.004, (z0 + z1) / 2); g.renderOrder = 1; scene.add(g); if (level.noBatch) level.noBatch.push(g); } }
     for (const [cx, cz, w, d] of [[-50, -170, 260, 200], [0, 65, 160, 80]]) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat); m.rotation.x = -Math.PI / 2; m.position.set(cx, -1.07, cz); m.renderOrder = 2; scene.add(m); wet.hide.push(m); }
   }
 
