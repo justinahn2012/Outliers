@@ -14,6 +14,7 @@ function lookKey(m) {
   const parts = [m.type, r5(m.roughness), r5(m.metalness), m.emissive ? m.emissive.getHexString() : '', m.emissiveIntensity, m.envMapIntensity, m.side, m.toneMapped, m.flatShading];
   for (const k of TEX_KEYS) parts.push(m[k] ? (m[k].source ? m[k].source.uuid : m[k].uuid) : '-');
   if (m.normalScale) parts.push(m.normalScale.x, m.normalScale.y);
+  parts.push(m.userData.falloff ? 'F' : '');
   return parts.join('|');
 }
 function texOK(m) {
@@ -27,10 +28,33 @@ function texOK(m) {
   }
   return rep || { rx: 1, ry: 1, ox: 0, oy: 0 };
 }
+// grime on every batched wall (environment.md Fix 10): a wet splash band at the base, soot under the parapet, vertical
+// water streaks; works in world space (batched geometry is world space) with the building top in a vertex attribute
+let _streak = null;
+function streakTex() {
+  if (_streak) return _streak;
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256; const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, 128, 256);
+  let s = 77; const R = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+  for (let i = 0; i < 50; i++) { const px = R() * 128, py = R() * 200, len = 20 + R() * 70, w = 1 + R() * 2, g = x.createLinearGradient(0, py, 0, py + len); g.addColorStop(0, 'rgba(255,255,255,0.5)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(px, py, w, len); }
+  _streak = new THREE.CanvasTexture(c); _streak.wrapS = _streak.wrapT = THREE.RepeatWrapping; return _streak;
+}
+function addGrime(c) {
+  c.onBeforeCompile = (sh) => {
+    sh.uniforms.tStreak = { value: streakTex() };
+    sh.vertexShader = 'attribute float aTop; varying vec3 vWP; varying float vTop;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vWP = (modelMatrix * vec4(position, 1.0)).xyz; vTop = aTop;');
+    sh.fragmentShader = 'uniform sampler2D tStreak; varying vec3 vWP; varying float vTop;\n' + sh.fragmentShader
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        diffuseColor.rgb *= mix(0.72, 1.0, smoothstep(0.2, 1.4, vWP.y)) * mix(1.0, 0.82, smoothstep(vTop - 1.0, vTop, vWP.y)) * mix(1.0, 0.8, texture2D(tStreak, vec2((vWP.x + vWP.z) / 7.0, vWP.y / 9.0)).r);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor *= mix(0.7, 1.0, smoothstep(0.0, 1.5, vWP.y));`);
+  };
+  c.customProgramCacheKey = () => 'grime';
+}
 function canonical(m, cache) {
   const k = lookKey(m);
   if (cache.has(k)) return cache.get(k);
   const c = m.clone(); c.vertexColors = true; if (c.color) c.color.set(1, 1, 1);
+  if (m.userData.falloff) addGrime(c);
   for (const t of TEX_KEYS) if (c[t]) { const tx = c[t].clone(); tx.repeat.set(1, 1); tx.offset.set(0, 0); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.needsUpdate = true; c[t] = tx; }
   cache.set(k, c); return c;
 }
@@ -48,6 +72,8 @@ export function staticBatch(scene, { exclude = new Set(), cell = 48 } = {}) {
     g.applyMatrix4(mesh.matrixWorld); g.groups = []; g.morphAttributes = {};
     if (mat && mat.userData.falloff) {   // facade height falloff: street-level bright, upper floors dark
       const P = g.attributes.position, C = g.attributes.color;
+      let top = 0; for (let i = 0; i < P.count; i++) top = Math.max(top, P.getY(i));
+      g.setAttribute('aTop', new THREE.BufferAttribute(new Float32Array(P.count).fill(top), 1));
       for (let i = 0; i < P.count; i++) { const t = Math.min(1, Math.max(0, (P.getY(i) - 3.5) / 7.5)), f = 1 - 0.62 * t * t * (3 - 2 * t); C.setXYZ(i, C.getX(i) * f, C.getY(i) * f, C.getZ(i) * f); }
     }
     return g;

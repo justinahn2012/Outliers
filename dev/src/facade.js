@@ -250,12 +250,12 @@ function skylightAtlas() {
 // back wall (512 x 256) and a midground layer with alpha (counters, aisles, customers)
 const SHOPS = {
   noodles: { names: ['LUCKY NOODLE', 'KAIJU RAMEN', 'NIGHT BOWL'], sub: 'OPEN LATE · HAND-PULLED', sign: '#ff2a8a', light: [1.5, 1.05, 0.62], wall: 0x5a3a28, floorA: 0x2a2018, floorB: 0x3a2c20 },
-  mart: { names: ['24/7 MART', 'QUIKSTOP', 'CORNER STORE'], sub: 'COLD DRINKS · LOTTO · ATM', sign: '#ff4040', light: [1.25, 1.45, 1.4], wall: 0xd8dcd8, floorA: 0xb8b8b0, floorB: 0x8c8c86 },
+  mart: { names: ['24/7 MART', 'QUIKSTOP', 'CORNER STORE'], sub: 'COLD DRINKS · LOTTO · ATM', sign: '#ff4040', light: [1.05, 1.2, 1.15], wall: 0xc9d2d4, floorA: 0xb8b8b0, floorB: 0x8c8c86 },
   laundry: { names: ['SUDS & SPIN', 'COIN LAUNDRY'], sub: 'WASH · DRY · FOLD', sign: '#48e0ff', light: [1.0, 1.35, 1.5], wall: 0x8fc0c0, floorA: 0x9aa4a6, floorB: 0x6c7476 },
   pawn: { names: ['PIER PAWN', 'CASH 4 GOLD'], sub: 'WE BUY · WE SELL · NO QUESTIONS', sign: '#7dffb0', light: [1.5, 1.2, 0.8], wall: 0x6a2a24, floorA: 0x3a2a22, floorB: 0x2a1e18 },
   bar: { names: ['THE LOW TIDE', 'ANCHOR BAR', 'LAST CALL'], sub: 'COLD BEER · NO CHIPS SCANNED', sign: '#ff2a8a', light: [1.4, 0.75, 0.5], wall: 0x2a1418, floorA: 0x2a1a14, floorB: 0x1c120e },
   pharmacy: { names: ['FARMACIA', 'DRUGS 24H'], sub: 'PRESCRIPTIONS · FIRST AID', sign: '#40ff90', light: [1.3, 1.5, 1.35], wall: 0xe8eee8, floorA: 0xd0d6d0, floorB: 0xa8b0a8 },
-  repair: { names: ['CHIP REPAIR', 'SIGNAL SHOP', 'FIXIT'], sub: 'IMPLANTS FLASHED · CASH ONLY', sign: '#19e3ff', light: [0.9, 0.95, 1.6], wall: 0x24283a, floorA: 0x202430, floorB: 0x2c3040 },
+  repair: { names: ['CHIP REPAIR', 'SIGNAL SHOP', 'FIXIT'], sub: 'IMPLANTS FLASHED · CASH ONLY', sign: '#3fd0ff', light: [0.9, 0.95, 1.6], wall: 0x24283a, floorA: 0x202430, floorB: 0x2c3040 },
 };
 const KIND_LIST = ['noodles', 'mart', 'laundry', 'pawn', 'bar', 'pharmacy', 'repair'];
 const glowRect = (x, X, Y, W, H, col, blur = 14) => { x.save(); x.shadowColor = col; x.shadowBlur = blur; x.fillStyle = col; x.fillRect(X, Y, W, H); x.restore(); };
@@ -276,9 +276,9 @@ function paintShop(kind) {
     silhouette(y, 140, 210, 70, true); silhouette(y, 330, 214, 66, true);
     for (let k = 0; k < 5; k++) { y.fillStyle = '#1a1210'; y.fillRect(50 + k * 100, 200, 8, 56); y.beginPath(); y.ellipse(54 + k * 100, 198, 20, 6, 0, 0, 6.3); y.fill(); }
   } else if (kind === 'mart') {
-    for (let d = 0; d < 4; d++) { const X = 20 + d * 122; x.fillStyle = '#e8f6ff'; x.fillRect(X, 20, 112, 236); for (let s = 0; s < 5; s++) { x.fillStyle = '#7a8a90'; x.fillRect(X, 60 + s * 40, 112, 3); for (let k = 0; k < 9; k++) { x.fillStyle = `hsl(${[0, 30, 120, 200, 280, 50][(k + s + d) % 6]},70%,${45 + R() * 15}%)`; x.fillRect(X + 4 + k * 12, 40 + s * 40, 8, 20); } } x.fillStyle = '#22282c'; x.fillRect(X + 108, 20, 6, 236); }
+    for (let d = 0; d < 4; d++) { const X = 20 + d * 122; x.fillStyle = '#e8f6ff'; x.fillRect(X, 20, 112, 236); for (let s = 0; s < 5; s++) { x.fillStyle = '#7a8a90'; x.fillRect(X, 60 + s * 40, 112, 3); for (let k = 0; k < 9; k++) { x.fillStyle = `hsl(${[0, 30, 120, 200, 160, 50][(k + s + d) % 6]},38%,${30 + R() * 12}%)`; x.fillRect(X + 4 + k * 12, 40 + s * 40, 8, 20); } } x.fillStyle = '#22282c'; x.fillRect(X + 108, 20, 6, 236); }
     x.fillStyle = '#c02020'; x.fillRect(0, 0, W, 18); x.font = 'bold 13px sans-serif'; x.fillStyle = '#fff'; x.fillText('COLD DRINKS   ·   ICE   ·   ENERGY   ·   COLD DRINKS', 16, 14);
-    for (const X0 of [30, 300]) { y.fillStyle = '#d0d4d4'; y.fillRect(X0, 90, 170, 166); for (let s = 0; s < 4; s++) { y.fillStyle = '#8a9094'; y.fillRect(X0, 96 + s * 40, 170, 4); for (let k = 0; k < 10; k++) { y.fillStyle = `hsl(${R() * 360},75%,55%)`; y.fillRect(X0 + 4 + k * 16.5, 100 + s * 40, 13, 30); } } }
+    for (const X0 of [30, 300]) { y.fillStyle = '#d0d4d4'; y.fillRect(X0, 90, 170, 166); for (let s = 0; s < 4; s++) { y.fillStyle = '#8a9094'; y.fillRect(X0, 96 + s * 40, 170, 4); for (let k = 0; k < 10; k++) { y.fillStyle = `hsl(${R() * 360},40%,38%)`; y.fillRect(X0 + 4 + k * 16.5, 100 + s * 40, 13, 30); } } }
     silhouette(y, 250, 256, 78, false);
   } else if (kind === 'laundry') {
     for (let row = 0; row < 2; row++) for (let k = 0; k < 6; k++) { const X = 14 + k * 82, Y = 20 + row * 116; x.fillStyle = '#eef2f2'; x.fillRect(X, Y, 74, 108); x.fillStyle = '#2a3236'; x.beginPath(); x.arc(X + 37, Y + 60, 26, 0, 6.3); x.fill(); x.fillStyle = row ? `rgba(80,170,255,${0.4 + R() * 0.4})` : 'rgba(40,40,44,1)'; x.beginPath(); x.arc(X + 37, Y + 60, 20, 0, 6.3); x.fill(); x.fillStyle = '#aab'; x.fillRect(X + 8, Y + 8, 30, 8); }
@@ -303,7 +303,7 @@ function paintShop(kind) {
     y.fillStyle = '#f0f4f0'; y.fillRect(110, 160, 300, 96); y.fillStyle = '#40c080'; y.fillRect(110, 156, 300, 6);
     silhouette(y, 260, 190, 60, false);
   } else if (kind === 'repair') {
-    for (let r2 = 0; r2 < 3; r2++) for (let k = 0; k < 7; k++) { const X = 20 + k * 68, Y = 20 + r2 * 62; x.fillStyle = '#0c0d12'; x.fillRect(X, Y, 62, 56); const hue = R() < 0.5 ? 'rgba(155,123,255,' : 'rgba(80,220,255,'; x.fillStyle = hue + (0.5 + R() * 0.4) + ')'; x.fillRect(X + 5, Y + 5, 52, 42); for (let l = 0; l < 42; l += 3) { x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(X + 5, Y + 5 + l, 52, 1); } if (R() < 0.3) { x.fillStyle = 'rgba(255,255,255,0.9)'; x.font = 'bold 13px monospace'; x.fillText('||||', X + 16, Y + 32); } }
+    for (let r2 = 0; r2 < 3; r2++) for (let k = 0; k < 7; k++) { const X = 20 + k * 68, Y = 20 + r2 * 62; x.fillStyle = '#0c0d12'; x.fillRect(X, Y, 62, 56); const hue = R() < 0.5 ? 'rgba(63,208,255,' : 'rgba(80,220,255,'; /* cyan only: violet is hers */ x.fillStyle = hue + (0.5 + R() * 0.4) + ')'; x.fillRect(X + 5, Y + 5, 52, 42); for (let l = 0; l < 42; l += 3) { x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(X + 5, Y + 5 + l, 52, 1); } if (R() < 0.3) { x.fillStyle = 'rgba(255,255,255,0.9)'; x.font = 'bold 13px monospace'; x.fillText('||||', X + 16, Y + 32); } }
     for (let k = 0; k < 8; k++) { x.strokeStyle = '#111'; x.lineWidth = 3; x.beginPath(); x.moveTo(R() * W, 200); x.bezierCurveTo(R() * W, 260, R() * W, 230, R() * W, 256); x.stroke(); }
     y.fillStyle = '#3a3440'; y.fillRect(40, 168, 420, 12); y.fillStyle = '#222'; y.fillRect(50, 180, 10, 76); y.fillRect(440, 180, 10, 76);
     y.save(); y.shadowColor = '#fff6d0'; y.shadowBlur = 18; y.fillStyle = '#fff2c0'; y.fillRect(150, 140, 30, 10); y.restore();
@@ -319,7 +319,7 @@ function shutterTexture() {
   for (let k = 0; k < 60; k++) { x.fillStyle = `rgba(90,50,30,${R() * 0.25})`; x.fillRect(R() * 512, R() * 256, 4 + R() * 30, 2 + R() * 40); }
   // tags, a stencil and the Census notice: everyone here knows what the notice means
   const tags = ['UNCOUNTED', 'NULL WAS HERE', 'COUNT: 1', 'NOT A CRIME', '0447'];
-  for (let k = 0; k < 3; k++) { x.save(); x.translate(40 + R() * 300, 70 + R() * 150); x.rotate((R() - 0.5) * 0.3); x.font = `bold ${24 + R() * 22}px sans-serif`; x.lineWidth = 5; x.strokeStyle = '#111'; const t = tags[Math.floor(R() * tags.length)]; x.strokeText(t, 0, 0); x.fillStyle = ['#ff2a8a', '#ffd040', '#9b7bff', '#40e0ff'][k % 4]; x.fillText(t, 0, 0); x.restore(); }
+  for (let k = 0; k < 3; k++) { x.save(); x.translate(40 + R() * 300, 70 + R() * 150); x.rotate((R() - 0.5) * 0.3); x.font = `bold ${24 + R() * 22}px sans-serif`; x.lineWidth = 5; x.strokeStyle = '#111'; const t = tags[Math.floor(R() * tags.length)]; x.strokeText(t, 0, 0); x.fillStyle = ['#ff2a8a', '#ffd040', '#7dffb0', '#40e0ff'][k % 4]; x.fillText(t, 0, 0); x.restore(); }
   x.fillStyle = '#f0ece0'; x.fillRect(380, 40, 100, 70); x.fillStyle = '#b02020'; x.fillRect(380, 40, 100, 14); x.fillStyle = '#222'; x.font = 'bold 10px sans-serif'; x.fillText('CENSUS NOTICE', 388, 51); x.font = '9px sans-serif';
   ['PREMISES CLOSED', 'OWNER UNCOUNTED', 'DO NOT ENTER', '|||| ||'].forEach((t, i) => x.fillText(t, 388, 68 + i * 11));
   return tex(c);

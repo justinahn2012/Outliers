@@ -107,6 +107,7 @@ export function makeDecals(scene, zones, extra = {}) {
   // ---- Harrow by hand (Appendix B2)
   for (const [x, z] of [[2, 20], [-2, 8.5], [2, -6], [-2, -19], [-5, 1]]) add(D.manhole, x, z);
   for (const [x, z] of extra.stacks || []) add(D.manhole, x + 1.2, z + 0.6);
+  for (const [x, , z] of extra.trees || []) add(D.treepit, x, z, 0, 1);
   for (const sx of [-8.2, 8.2]) for (const z of [21, 9, -3, -15, -24]) add(D.drain, sx, z, Math.PI / 2, 1);
   for (const [x, z] of [[-3, 14], [4, 3], [-4, -10], [3, -21]]) add(D.tar, x, z);
   add(D.patch, 5.5, 16, 0, 1); add(D.patch, -6.5, -14, Math.PI / 2, 1.2); add(D.patch, 1, -12.8, 0, 1.1);

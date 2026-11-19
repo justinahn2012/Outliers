@@ -248,9 +248,32 @@ function pbr(prefix, rx, ry, extra = {}) {
   });
 }
 
+// bare street tree (environment.md Fix 10): trunk, 4 branches, 3 secondaries each, 3 tertiaries each (~530 tris)
+function treeGeometry() {
+  let q = 4242; const r = () => { q = (q * 16807) % 2147483647; return (q - 1) / 2147483646; };
+  const gs = [], up = new THREE.Vector3(0, 1, 0);
+  const limb = (a, dir, len, r0) => {
+    const g = new THREE.CylinderGeometry(r0 * 0.55, r0, len, 5, 1, true); g.translate(0, len / 2, 0);
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, dir)); g.translate(a.x, a.y, a.z); gs.push(g);
+    return a.clone().addScaledVector(dir, len);
+  };
+  const tip = limb(new THREE.Vector3(), up.clone(), 2.4, 0.12);
+  for (let i = 0; i < 4; i++) {
+    const az = i / 4 * Math.PI * 2 + r() * 0.6, pitch = (35 + r() * 20) * Math.PI / 180;
+    const d1 = new THREE.Vector3(Math.sin(pitch) * Math.cos(az), Math.cos(pitch), Math.sin(pitch) * Math.sin(az));
+    const b1 = limb(tip.clone().addScaledVector(up, -0.2 - r() * 0.3), d1, 1.6, 0.06);
+    for (let j = 0; j < 3; j++) {
+      const d2 = d1.clone().add(new THREE.Vector3((r() - 0.5) * 1.2, (r() - 0.2) * 0.8, (r() - 0.5) * 1.2)).normalize();
+      const b2 = limb(tip.clone().lerp(b1, 0.5 + j * 0.2), d2, 0.9, 0.03);
+      for (let k = 0; k < 3; k++) { const d3 = d2.clone().add(new THREE.Vector3((r() - 0.5) * 1.4, (r() - 0.3), (r() - 0.5) * 1.4)).normalize(); limb(b1.clone().lerp(b2, 0.4 + k * 0.25).lerp(b2, 0.3), d3, 0.5, 0.015); }
+    }
+  }
+  const g = mergeGeometries(gs.map(x => x.index ? x.toNonIndexed() : x)); g.computeVertexNormals(); return g;
+}
+
 // ---------- level ----------
 export function buildLevel(scene, world, wet) {
-  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [], fades: [], roofs: [], lampPosts: [], noBatch: [] };
+  const L = { lights: [], update: null, lampHeads: [], gates: [], vents: [], spots: [], fades: [], roofs: [], lampPosts: [], noBatch: [], trees: [] };
   // Every lamp, neon and lantern registers a light "spot"; only the POOL nearest the camera get a real
   // point light each frame, so the shader cost stays flat however big the world gets.
   const spots = L.spots;
@@ -299,13 +322,15 @@ export function buildLevel(scene, world, wet) {
   // facades fall off with height (lighting_vfx.md Fix 6): staticBatch bakes userData.falloff into vertex colours, so the
   // street stays the brightest band, upper floors go dark and lit windows pop
   const brick = (w, h, rot) => {
-    const r = rnd(); let m;
-    if (r < 0.42) m = pbr('dark_brick_wall', w / 2.6, h / 2.6);
-    else if (r < 0.62) m = pbr('red_brick', w / 2.2, h / 2.2, { color: new THREE.Color(0.62, 0.55, 0.52) });
-    else if (r < 0.82) m = pbr('factory_brick', w / 2.4, h / 2.4, { color: new THREE.Color(0.8, 0.76, 0.72) });
-    else { const c = PAINT[Math.floor(rnd() * PAINT.length)]; m = pbr('plaster_wall', w / 3.2, h / 3.2, { color: new THREE.Color(c[0], c[1], c[2]) }); }
-    m.userData.falloff = true; return m;
+    const r = rnd(); let m, tile;
+    if (r < 0.42) m = pbr('dark_brick_wall', w / (tile = 2.6), h / 2.6);
+    else if (r < 0.62) m = pbr('red_brick', w / (tile = 2.2), h / 2.2, { color: new THREE.Color(0.62, 0.55, 0.52) });
+    else if (r < 0.82) m = pbr('factory_brick', w / (tile = 2.4), h / 2.4, { color: new THREE.Color(0.8, 0.76, 0.72) });
+    else { const c = PAINT[Math.floor(rnd() * PAINT.length)]; m = pbr('plaster_wall', w / (tile = 3.2), h / 3.2, { color: new THREE.Color(c[0], c[1], c[2]) }); }
+    m.userData.falloff = true; m.userData.tile = tile; return m;
   };
+  // side and back faces use the building's own wall (environment.md Fix 10), re-tiled for that face's width; no rng draw
+  const wallFor = (m, fw, h) => { const c = m.clone(); const t = m.userData.tile || 2.6; for (const k of ['map', 'normalMap', 'roughnessMap']) if (m[k]) c[k] = cloneTex(m[k], fw / t, h / t); return c; };
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x17181b, roughness: 0.95 });
   const kit = makeFacadeKit(scene, { rnd, signTexture });
 
@@ -418,9 +443,10 @@ export function buildLevel(scene, world, wet) {
     const w = x1 - x0, d = z1 - z0;
     const faceW = axis === 'x' ? d : w;
     const face = brick(faceW, h);
+    const sideX = wallFor(face, d, h), sideZ = wallFor(face, w, h);
     const mats = axis === 'x'
-      ? [x1 < 0 ? face : roofMat, x1 < 0 ? roofMat : face, roofMat, roofMat, roofMat, roofMat]
-      : [roofMat, roofMat, roofMat, roofMat, face, roofMat];
+      ? [x1 < 0 ? face : sideX, x1 < 0 ? sideX : face, roofMat, roofMat, sideZ, sideZ]
+      : [sideX, sideX, roofMat, roofMat, face, sideZ];
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d, 1, Math.max(1, Math.ceil(h / 2.5)), 1), mats);
     m.position.set((x0 + x1) / 2, h / 2, (z0 + z1) / 2); m.receiveShadow = true; scene.add(m);
     // windows on the street face
@@ -444,6 +470,7 @@ export function buildLevel(scene, world, wet) {
     const mats = [roofMat, roofMat, roofMat, roofMat, roofMat, roofMat];
     const idx = { '+x': 0, '-x': 1, '+z': 4, '-z': 5 };
     for (const f of faces) mats[idx[f]] = brick(f[1] === 'x' ? d : w, h);
+    { const own = mats[idx[faces[0]]]; if (own && own !== roofMat) for (const [k, fw] of [[0, d], [1, d], [4, w], [5, w]]) if (mats[k] === roofMat) mats[k] = wallFor(own, fw, h); }
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d, 1, Math.max(1, Math.ceil(h / 2.5)), 1), mats);
     m.position.set((x0 + x1) / 2, h / 2, (z0 + z1) / 2); m.receiveShadow = true; scene.add(m);
     if (opts.collide !== false) wall((x0 + x1) / 2, h / 2, (z0 + z1) / 2, w / 2, h / 2, d / 2);
@@ -470,6 +497,11 @@ export function buildLevel(scene, world, wet) {
   seed = 4242;
   [[-27, -17.5, 15], [-15.5, -3.5, 11], [-1.5, 11, 17], [13, 25, 10]].forEach(([z0, z1, h]) => bldg(-28, -12.7, z0, z1, h, 'x'));
   [[-27, -12.5, 13], [3, 14, 12], [16, 25, 9]].forEach(([z0, z1, h]) => bldg(12.7, 28, z0, z1, h, 'x'));
+  // six bare street trees in grated pits along the kerbs
+  for (const [tx, tz] of [[-9.1, -11], [-9.1, 2.5], [-9.1, 23], [9.1, -19], [9.1, 6], [9.1, 23]]) {
+    L.trees.push([tx, 0, tz, L.trees.length + 1]);
+    const b = new CANNON.Body({ mass: 0, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL }); b.addShape(new CANNON.Cylinder(0.15, 0.15, 2.4, 8)); b.position.set(tx, 1.2, tz); world.addBody(b);
+  }
   // the side-street corner is one storey so its roof doesn't fill the lane's frame (environment.md Fix 8)
   block(12.7, 20, -1.5, 1, 9, ['-x', '-z'], { noStore: ['-x', '-z'] });
   // Neon
@@ -685,7 +717,12 @@ export function buildLevel(scene, world, wet) {
     };
   }
   L.finishBeacons(); L.finishCables();
-  L.decals = makeDecals(scene, ZONES, { stacks: L.stacks });
+  // bare trees: one instanced draw; bare branches throwing moon shadows on wet stone
+  { const tg = treeGeometry(), tim = new THREE.InstancedMesh(tg, new THREE.MeshStandardMaterial({ color: 0x1a1714, roughness: 0.6 }), L.trees.length);
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+    L.trees.forEach(([x, y, z, k], i) => { M.compose(P.set(x, y, z), Q.setFromAxisAngle(UP, k * 2.39), S.setScalar(0.9 + (k * 0.137 % 1) * 0.25)); tim.setMatrixAt(i, M); });
+    tim.castShadow = true; tim.receiveShadow = true; scene.add(tim); }
+  L.decals = makeDecals(scene, ZONES, { stacks: L.stacks, trees: L.trees.filter(t => t[1] < 0.1) });
   return L;
 }
 
@@ -1191,7 +1228,22 @@ function buildExpansion(C, H) {
 
   // ================= CHECKPOINT PLAZA =================
   floor('asphalt_02', 12.4, 30, -12.5, -6.5, 3.2, 1, 1, { normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: 1.0 });
-  block(12.9, 30, -27, -12.55, 12.9, ['+z'], { noStore: ['+z'] });
+  block(12.9, 30, -27, -12.55, 12.9, ['+z'], { noStore: ['+z'], skipWin: (p) => p.x > 23.5 && p.x < 29.5 });
+  // a ghost sign on the face-on wall at the top of the side street: old paint for a district the Ledger says never existed.
+  // Paint is analog, so it survived the deletion (STORY.md rule 5)
+  { const [gc, gx] = canvas(512, 600);
+    gx.fillStyle = 'rgba(207,195,166,0.35)'; gx.fillRect(20, 20, 472, 560);
+    gx.fillStyle = 'rgba(107,42,34,0.6)'; gx.textAlign = 'center'; gx.font = "900 92px 'Bebas Neue', Impact, sans-serif";
+    ['TIDELINES', 'FERRY', '& FISH CO.'].forEach((t, k) => gx.fillText(t, 256, 150 + k * 120));
+    gx.font = "700 34px 'Bebas Neue', Impact, sans-serif"; gx.fillText('DAILY SAILINGS · ICE · BAIT', 256, 520);
+    gx.globalCompositeOperation = 'destination-out';
+    let q = 60000; const qr = () => { q = (q * 16807) % 2147483647; return (q - 1) / 2147483646; };
+    for (let k = 0; k < 4000; k++) { gx.beginPath(); gx.arc(qr() * 512, qr() * 600, 1 + qr() * 2.5, 0, 6.3); gx.fill(); }
+    for (let k = 0; k < 20; k++) { const dx = qr() * 512, dy = qr() * 300; gx.fillRect(dx, dy, 2 + qr() * 3, 80 + qr() * 200); }
+    gx.globalCompositeOperation = 'source-over';
+    const gt = new THREE.CanvasTexture(gc); gt.colorSpace = THREE.SRGBColorSpace;
+    const gs = new THREE.Mesh(new THREE.PlaneGeometry(6, 7), new THREE.MeshStandardMaterial({ map: gt, transparent: true, roughness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    gs.position.set(26.5, 7.5, -12.53); scene.add(gs); }
   block(12.7, 30, -6.45, -1.5, 4.6, ['-x', '-z'], { storeW: 6, skylights: 3 });
   floor('granite_tile', 30, 62, -30, 4, 2.3, 0.9, 0.5, { color: new THREE.Color(0.7, 0.74, 0.82), roughness: 0.6 });
   block(20, 30, -30, -12.55, 14, ['+x'], { storeW: 6 });
@@ -1228,10 +1280,16 @@ function buildExpansion(C, H) {
   const leaf = new THREE.MeshStandardMaterial({ color: 0x1d2a1a, roughness: 0.9 });
   for (const [px, pz] of [[40, -6], [52, -6], [40, -20], [52, -20]]) {
     mesh(new THREE.BoxGeometry(3, 0.7, 3), planterMat, px, 0.35, pz, 0); stat(px, 0.35, pz, 1.5, 0.35, 1.5);
-    mesh(new THREE.CylinderGeometry(0.12, 0.16, 2.4, 6), rusty, px, 1.6, pz, 0, false);
-    mesh(new THREE.SphereGeometry(1.25, 10, 8), leaf, px, 3.2, pz, 0);
+    L.trees.push([px, 0.7, pz, L.trees.length + 3]);
   }
-  for (const [bx, bz, r] of [[46, -2.5, 0], [46, -23.5, 0]]) { mesh(new THREE.BoxGeometry(2.4, 0.45, 0.6), counterMat, bx, 0.45, bz, r); stat(bx, 0.3, bz, 1.2, 0.3, 0.3, r); }
+  // slatted benches on cast-iron ends (were brown boxes)
+  { const wood = new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.7 }), iron = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.5, metalness: 0.7 });
+    for (const [bx, bz] of [[46, -2.5], [46, -23.5]]) {
+      for (let k = 0; k < 3; k++) mesh(new THREE.BoxGeometry(2.4, 0.04, 0.11), wood, bx, 0.45, bz - 0.15 + k * 0.13, 0);
+      for (let k = 0; k < 2; k++) { const sl = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.1, 0.03), wood); sl.position.set(bx, 0.62 + k * 0.14, bz + 0.25); sl.rotation.x = -0.18; sl.castShadow = true; scene.add(sl); }
+      for (const ex of [-1.05, 1.05]) { mesh(new THREE.BoxGeometry(0.06, 0.45, 0.5), iron, bx + ex, 0.22, bz + 0.02, 0); mesh(new THREE.BoxGeometry(0.06, 0.4, 0.06), iron, bx + ex, 0.62, bz + 0.27, 0); }
+      stat(bx, 0.3, bz, 1.2, 0.3, 0.3, 0);
+    } }
   { // tram shelter: it sits between the camera and the tram line, so it fades while she's on the line
     const sm = metal.clone(), sg = glassBooth.clone();
     const o = [mesh(new THREE.BoxGeometry(5.6, 0.12, 2.2), sm, 47, 2.8, -28.6, 0), mesh(new THREE.BoxGeometry(5.4, 2.6, 0.06), sg, 47, 1.4, -29.6, 0, false)];
@@ -1308,6 +1366,16 @@ function buildExpansion(C, H) {
   // the market-facing facade above the loading door
   mesh(panelGeo(0.3, 3.2, 6), wallMat, -7.75, 6.2, -55, 0, false);
   sign('COLD STORAGE · NO ENTRY', '#cfeeff', false, -7.58, 5.2, -55, Math.PI / 2, 5.2, 0.6);
+  // the market face reads as a loading dock (environment.md Fix 10): shutter coil, bumpers, hazard strip, pipes, condensers
+  { const pipeW = new THREE.MeshStandardMaterial({ color: 0xd8dce0, roughness: 0.5, metalness: 0.2 }), blk = new THREE.MeshStandardMaterial({ color: 0x101012, roughness: 0.8 });
+    const coil = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 6.2, 12), metal); coil.rotation.x = Math.PI / 2; coil.position.set(-7.3, 2.75, -55); coil.castShadow = true; scene.add(coil);
+    mesh(new THREE.BoxGeometry(0.62, 0.62, 6.3), metal, -7.35, 2.75, -55, 0);
+    for (const bz of [-57.6, -56.2, -53.8, -52.4]) mesh(new THREE.BoxGeometry(0.12, 0.5, 0.25), blk, -7.52, 0.75, bz, 0);
+    const hz = (() => { const [hc, hx] = canvas(512, 32); hx.fillStyle = '#111'; hx.fillRect(0, 0, 512, 32); hx.fillStyle = '#c8a232'; for (let k = -32; k < 512; k += 32) { hx.beginPath(); hx.moveTo(k, 32); hx.lineTo(k + 16, 32); hx.lineTo(k + 32, 0); hx.lineTo(k + 16, 0); hx.fill(); } const t = new THREE.CanvasTexture(hc); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.repeat.set(6, 1); return t; })();
+    for (const [z0, z1] of [[-64.4, -58], [-52, -46]]) { const st = new THREE.Mesh(new THREE.PlaneGeometry(z1 - z0, 0.3), new THREE.MeshStandardMaterial({ map: hz, roughness: 0.6 })); st.position.set(-7.57, 0.15, (z0 + z1) / 2); st.rotation.y = Math.PI / 2; scene.add(st); }
+    for (const py of [3.9, 4.1]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 18, 8), pipeW); p.rotation.x = Math.PI / 2; p.position.set(-7.42, py, -55.2); scene.add(p); }
+    for (let bz = -64; bz <= -46.5; bz += 2) mesh(new THREE.BoxGeometry(0.2, 0.36, 0.05), metal, -7.5, 4.0, bz, 0, false);
+    for (const cz of [-62, -49]) { mesh(new THREE.BoxGeometry(0.6, 0.9, 1.2), new THREE.MeshStandardMaterial({ color: 0x8a8f94, roughness: 0.45, metalness: 0.7 }), -7.3, 3.0, cz, 0); const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.03, 16), blk); fan.rotation.z = Math.PI / 2; fan.position.set(-6.99, 3.0, cz); scene.add(fan); } }
   // racks with ice crates
   for (const rz of [-50, -55.5]) for (const rx of [-26, -19.5]) {
     mesh(new THREE.BoxGeometry(5, 0.08, 1.2), metal, rx, 1.0, rz, 0); mesh(new THREE.BoxGeometry(5, 0.08, 1.2), metal, rx, 2.1, rz, 0);
@@ -1371,9 +1439,10 @@ function buildExpansion(C, H) {
   const sc = new THREE.MeshStandardMaterial({ color: 0x9a7a1a, roughness: 0.55, metalness: 0.6 });
   for (const [lx, lz] of [[66.2, -122.2], [66.2, -128.8], [72.8, -122.2], [72.8, -128.8]]) { mesh(new THREE.BoxGeometry(0.5, 8, 0.5), sc, lx, 4, lz, 0); stat(lx, 4, lz, 0.25, 4, 0.25); }
   mesh(new THREE.BoxGeometry(7.2, 0.8, 0.6), sc, 69.5, 8, -122.2, 0); mesh(new THREE.BoxGeometry(7.2, 0.8, 0.6), sc, 69.5, 8, -128.8, 0); mesh(new THREE.BoxGeometry(2.4, 1.6, 2.2), metal, 69.5, 9.1, -125.5, 0);
-  // the shed: roll-up door frames, pallets, a parked forklift
+  // the shed: roll-up door frames, shrink-wrapped pallet loads (nothing here looks liftable), a parked forklift
+  const wrapMat = new THREE.MeshStandardMaterial({ color: 0xb8c4cc, roughness: 0.25, metalness: 0.05 }), strapMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.6 });
   for (const dx of [15.0, 39.6]) { mesh(new THREE.BoxGeometry(0.5, 5.2, 0.5), metal, dx, 2.6, -121.7, 0); mesh(new THREE.BoxGeometry(0.5, 5.2, 0.5), metal, dx, 2.6, -110.3, 0); mesh(new THREE.BoxGeometry(0.6, 1.4, 12), new THREE.MeshStandardMaterial({ color: 0x5a6068, metalness: 0.7, roughness: 0.45 }), dx, 4.6, -116, 0); }
-  for (const [px, pz] of [[20, -112], [24, -120.5], [33, -112.2], [36, -120.4]]) { mesh(new THREE.BoxGeometry(1.2, 0.15, 1.0), counterMat, px, 0.08, pz, 0, false); mesh(new THREE.BoxGeometry(1.1, 0.9, 0.9), new THREE.MeshStandardMaterial({ color: 0x6b5a3a, roughness: 0.9 }), px, 0.6, pz, 0); stat(px, 0.55, pz, 0.6, 0.55, 0.5); }
+  for (const [px, pz] of [[20, -112], [24, -120.5], [33, -112.2], [36, -120.4]]) { mesh(new THREE.BoxGeometry(1.2, 0.15, 1.0), counterMat, px, 0.08, pz, 0, false); mesh(new THREE.BoxGeometry(1.2, 1.35, 1.0), wrapMat, px, 0.825, pz, 0); for (const sy of [0.45, 0.85, 1.25]) mesh(new THREE.BoxGeometry(1.22, 0.03, 1.02), strapMat, px, sy, pz, 0, false); stat(px, 0.75, pz, 0.6, 0.75, 0.5); }
   { const fk = new THREE.MeshStandardMaterial({ color: 0xc8901a, roughness: 0.5, metalness: 0.4 });
     mesh(new THREE.BoxGeometry(1.2, 1.4, 2.2), fk, 29, 0.9, -119.8, 0); mesh(new THREE.BoxGeometry(0.1, 2.4, 0.1), metal, 29.4, 1.2, -118.5, 0, false); mesh(new THREE.BoxGeometry(0.1, 2.4, 0.1), metal, 28.6, 1.2, -118.5, 0, false); stat(29, 0.9, -119.8, 0.6, 0.9, 1.1); }
   for (const [lx, lz] of [[21, -116], [33, -116]]) { mesh(new THREE.ConeGeometry(0.5, 0.4, 12, 1, true), metal, lx, 5.0, lz, 0, false); addSpot(lx, 4.6, lz, 0xffc070, 18, 11, 1.6); }
