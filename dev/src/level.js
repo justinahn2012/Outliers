@@ -675,7 +675,7 @@ export function buildLevel(scene, world, wet) {
     ['#50707a', 0.24, 0.30, '#0e1a1f', 0.026, 1.10, 0.25, 8, 0.08], ['#34505a', 0.14, 0.28, '#0a1013', 0.032, 1.20, 1.0, 6, 0.08],
     ['#3d5a66', 0.18, 0.36, '#0d1215', 0.024, 1.20, 0.8, 8, 0.07], ['#3d5a66', 0.20, 0.40, '#0c1316', 0.022, 1.15, 0.9, 8, 0.07],
     ['#3a5866', 0.20, 0.55, '#0c1418', 0.028, 1.20, 1.0, 12, 0.10], ['#3a5866', 0.18, 0.45, '#0d1519', 0.034, 1.15, 1.0, 12, 0.10],
-  ].map(([hc, hi, mi, fc, fd, ex, wt, mn, ma]) => ({ hc: new THREE.Color(hc), hi, mi, fc: new THREE.Color(fc), fd, ex, wt, mn, ma }));
+  ].map(([hc, hi, mi, fc, fd, ex, wt, mn, ma]) => ({ hc: new THREE.Color(hc), hi, mi, fc: new THREE.Color(fc).multiplyScalar(1.25), fd: 0.019 + (fd - 0.022) * 0.6, ex, wt, mn, ma }));   // fog: the panel's contrast, gentler (a dark fog only darkens on a phone)
   const ZC = { hc: new THREE.Color(0x3d5a66), hi: 0.22, mi: 0.38, fc: new THREE.Color(0x0b1216), fd: 0.022, ex: 1.2, wt: 1, mn: 8, ma: 0.07 };
   let mistTint = new THREE.Color(1, 1, 1), mistTintT = 0, lastZ = 0;
   const rain = new THREE.Mesh(rg, rainMat); rain.frustumCulled = false; rain.renderOrder = 15; scene.add(rain); wet.hide.push(rain);
@@ -1512,6 +1512,18 @@ function buildExpansion(C, H) {
     mesh(new THREE.BoxGeometry(1.2, 1.4, 2.2), fk, 29, 0.9, -119.8, 0); mesh(new THREE.BoxGeometry(0.1, 2.4, 0.1), metal, 29.4, 1.2, -118.5, 0, false); mesh(new THREE.BoxGeometry(0.1, 2.4, 0.1), metal, 28.6, 1.2, -118.5, 0, false); stat(29, 0.9, -119.8, 0.6, 0.9, 1.1); }
   for (const [lx, lz] of [[21, -116], [33, -116]]) { mesh(new THREE.ConeGeometry(0.5, 0.4, 12, 1, true), metal, lx, 5.0, lz, 0, false); addSpot(lx, 4.6, lz, 0xffc070, 18, 11, 1.6); }
 
+  // the quay reads as a quay (art_director.md Fix 10): coping with a worn white edge, cast-iron bollards every 6 m, old tyre
+  // fenders on the quay face between them
+  { const iron = new THREE.MeshStandardMaterial({ color: 0x1e2024, metalness: 0.6, roughness: 0.5 }), cop = new THREE.MeshStandardMaterial({ color: 0x55575a, roughness: 0.8 }), edge = new THREE.MeshStandardMaterial({ color: 0x8e8c86, roughness: 0.7 }), tyre = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.85 });
+    const bollard = (x, z) => { mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.6, 12), iron, x, 0.3, z, 0); mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 12), iron, x, 0.62, z, 0); statCyl(x, 0.35, z, 0.24, 0.7); };
+    // west edge (x -20.3) and north edge (z -130.3)
+    mesh(new THREE.BoxGeometry(0.6, 0.04, 38), cop, -20.0, 0.02, -111, 0, false); mesh(new THREE.BoxGeometry(0.1, 0.045, 38), edge, -20.25, 0.025, -111, 0, false);
+    mesh(new THREE.BoxGeometry(34.5, 0.04, 0.6), cop, -3.05, 0.02, -130.0, 0, false); mesh(new THREE.BoxGeometry(34.5, 0.045, 0.1), edge, -3.05, 0.025, -130.25, 0, false);
+    for (let z = -95; z > -129; z -= 6) if (Math.abs(z + 104) > 1.8 && Math.abs(z + 120) > 1.8) bollard(-19.8, z);
+    for (let x = -14; x < 13; x += 6) bollard(x, -129.8);
+    for (let z = -98; z > -129; z -= 6) { const t = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.12, 8, 16), tyre); t.position.set(-20.42, -0.35, z); t.rotation.y = Math.PI / 2; scene.add(t); }
+    for (let x = -11; x < 13; x += 6) { const t = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.12, 8, 16), tyre); t.position.set(x, -0.35, -130.42); scene.add(t); }
+  }
   // ================= FERRY PIER =================
   const deck = floor('weathered_planks', -62, -20.6, -120, -104, 2.0, 0.35, 0.25);
   mesh(new THREE.BoxGeometry(41.4, 1.8, 0.5), conc, -41.3, -0.9, -120.25, 0, false); mesh(new THREE.BoxGeometry(41.4, 1.8, 0.5), conc, -41.3, -0.9, -103.75, 0, false); mesh(new THREE.BoxGeometry(0.5, 1.8, 16.5), conc, -62.25, -0.9, -112, 0, false);
@@ -1529,7 +1541,10 @@ function buildExpansion(C, H) {
   sign('MOTH · INK ▾', '#ffb060', false, -61.3, 2.95, -112, Math.PI / 2, 2.6, 0.5);
   addSpot(-60.2, 1.6, -112, 0xffa050, 16, 8, 1.6);
   L.mothDoor = new THREE.Vector3(-60.0, 0, -112);
-  sign('FERRY · HALDEN ISLAND', '#e8f0ff', false, -52, 3.6, -112, Math.PI / 2, 5.6, 0.7, 'LAST SAILING CANCELLED');
+  sign('FERRY · HALDEN ISLAND', '#19d3e6', false, -52, 3.6, -112, Math.PI / 2, 5.6, 0.7, 'LAST SAILING CANCELLED');
+  // pale fog lamps on low posts along both pier edges (Moth's door stays the only warm light here)
+  { const post = new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.5, metalness: 0.6 });
+    for (const z of [-119.4, -104.6]) for (let x = -58; x <= -26; x += 8) { mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.0, 8), post, x, 0.5, z, 0, false); mesh(new THREE.BoxGeometry(0.2, 0.12, 0.2), glowMat(1.6, 1.8, 2.0), x, 1.05, z, 0, false); addSpot(x, 1.2, z, 0xdce8ff, 8, 4, 2); } }
   addSpot(-56, 3, -112, 0xd8e8ff, 14, 10, 1.6, 1);
   // the docked ferry along the north side
   const hull = new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.5, metalness: 0.3 });

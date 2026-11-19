@@ -16,6 +16,7 @@ import { makeDigitizer } from './digitize.js';
 import { staticBatch, mergeGroupByMaterial } from './batch.js';
 import { makeTrails } from './trails.js';
 import { makeTally } from './tally.js';
+import { makeTape } from './tape.js';
 import { makeProp, removeProp, setGlow, applyDamageLook, populateZone, DEFS } from './props.js';
 import { createHero, updateHeroVisual, blendLocomotion } from './hero.js';
 import { makeScarf } from './scarf.js';
@@ -192,7 +193,7 @@ async function boot() {
   cyber = makeCyber(scene, level, wet, world); G.cyber = cyber;
   G.digit = makeDigitizer(scene);
   G.trails = makeTrails(scene);
-  G.tally = makeTally(scene);
+  G.tally = makeTally(scene); G.tape = makeTape(scene);
   { // fold the static city into a few big meshes per 32 m cell (draw calls are the phone's bottleneck)
     const nb = new Set([...wet.hide, ...(level.noBatch || [])]); for (const F of level.fades) for (const o of F.objs) nb.add(o);
     G.batchStats = staticBatch(scene, { exclude: nb });
@@ -2552,7 +2553,7 @@ function updateCamera(rdt) {
   }
   const v = hero.body.velocity;
   const hit = rectOf(hp.x, hp.z, 0) || rectOf(hp.x, hp.z, 1.5);   // the rect she's actually in first: a padded neighbour at a junction would clamp her off-screen
-  let cx = hp.x + v.x * 0.18, cz = hp.z - 2.0 + v.z * 0.18;
+  let cx = hp.x + v.x * 0.18, cz = hp.z - 3.0 + v.z * 0.18;   // she sits ~60% down the screen: room ahead under the HUD (art_director.md Fix 8)
   if (hit) {
     const r = hit[1], o = r[4] || {};
     const mx = Math.min(5.2, (r[1] - r[0]) / 2), mzN = o.openN ? 3.5 : 6, mzS = 6.4;
@@ -2834,6 +2835,9 @@ function renderFrame(dt, rdt) {
   if (G.digit) safe(() => G.digit.update(rdt, G.props));
   if (G.trails) safe(() => G.trails.update(G.bolts, G.props));
   if (G.tally) safe(() => G.tally.update(rdt));
+  if (G.tape) safe(() => G.tape.update());
+  // Cold Storage is cold: her breath (and the captives') shows every 2.5 s (art_director.md Fix 10)
+  if (G.zone === 4 && FX.smoke) { G.breathT = (G.breathT || 0) - rdt; if (G.breathT <= 0) { G.breathT = 2.5; const heads = [hero.bones && hero.bones.head]; for (const v of CIVS) if (v.state === 'caged' && v.c.bones) heads.push(Object.values(v.c.bones).find(b => /Head/.test(b.name))); for (const hd of heads) if (hd) { hd.getWorldPosition(_v3); for (let k = 0; k < 3; k++) FX.smoke.emit(_v3.x + rand(-0.05, 0.05), _v3.y + 0.05, _v3.z + rand(-0.05, 0.05), rand(-0.15, 0.15), rand(0.15, 0.35), rand(-0.15, 0.15), 0.86, 0.92, 1.0, rand(0.9, 1.4), 0.06, 0.3, -0.02, 0.6, 0.45); } } }
   updateUI(rdt);
 }
 const PERF = { js: 0, render: 0, rdt: 0 }; window.__perf = PERF;
