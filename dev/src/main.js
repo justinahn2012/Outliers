@@ -438,6 +438,7 @@ function kill(e, dir, force) {
     for (let k = 0; k < (big ? 90 : 14); k++) Powers.voxels.emit(p.x, p.y, p.z, rand(-6, 6), rand(0, 6), rand(-6, 6), rand(0.08, 0.2), rand(0.6, 1.2), 2.4, 1.2, 0.3, 9);
     if (big) { num(_v2.set(p.x, p.y + 1, p.z), 'LIGHTS OUT', 'psi', 1.6); hitStop(0.12); screenFlash(0.3); G.glitch = 1; }
     if (e.gear.spot) { e.gear.spot.visible = false; e.gear.cone.visible = false; if (e.gear.arc) e.gear.arc.visible = false; }
+    if (e.beamSpot) e.beamSpot.k = 0;
   }
   if (e.type === 'informant' && G.chase && G.chase.e === e) chaseCaught();
   if (e.state !== 'ragdoll' && e.state !== 'gripped') knockdown(e, dir || new THREE.Vector3(0, 0, -1), Math.max(force, 6));
@@ -2061,6 +2062,7 @@ function updateWaves(dt) {
   updateFragments(dt);
   updateCivs(dt);
   safe(() => updateCrowd(dt));
+  safe(() => updateRelays());
   updateLocks(dt);
   updateChase(dt);
   if (G.zState === 'fight') {
@@ -2165,12 +2167,24 @@ function buildRelays() {
     for (const [ox, oz] of [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.1, 7, 0.1), relayMat); l.position.set(ox, 3.5, oz); l.castShadow = true; g.add(l); }
     for (let y = 0.8; y < 7; y += 1.1) { const r = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, 0.8), relayMat); r.position.y = y; g.add(r); }
     const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.2, 0.25, 16), relayMat); dish.position.y = 7.2; dish.rotation.x = 0.5; g.add(dish);
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 2.7, 3), toneMapped: false })); eye.position.y = 6.4; g.add(eye);
+    // the relay's eye is Census amber, pulsing at 1.2 Hz, with an amber pool on the ground (lighting_vfx.md Fix 9)
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.8, 0.3), toneMapped: false })); eye.position.y = 6.4; g.add(eye);
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(2.5, 32).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uA: { value: 1 } },
+      vertexShader: 'varying vec2 vP; void main(){ vP = position.xz / 2.5; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform float uA; varying vec2 vP; void main(){ float r = length(vP); gl_FragColor = vec4(vec3(1.0, 0.6, 0.1) * 0.22 * uA * (1.0 - r) * (1.0 - r), 1.0); }' }));
+    pool.position.y = 0.03; pool.renderOrder = 2; g.add(pool);
     const base = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 1.6), relayMat); base.position.y = 0.25; g.add(base);
     g.position.set(x, 0, z); scene.add(g);
     const body = new CANNON.Body({ mass: 0, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL }); body.addShape(new CANNON.Box(new CANNON.Vec3(0.6, 3.6, 0.6))); body.position.set(x, 3.6, z); world.addBody(body);
-    const R = { kind: 'relay', x, z, g, eye, body, hp: 160, maxHp: 160, alive: true, lastHit: 0 };
+    const R = { kind: 'relay', x, z, g, eye, pool, body, hp: 160, maxHp: 160, alive: true, lastHit: 0, deadT: -1 };
     body.userData = R; RELAYS.push(R);
+  }
+}
+// relay eyes pulse while they count; a downed relay's eye goes out over 0.25 s and its pool over 0.6 s
+function updateRelays() {
+  for (const R of RELAYS) {
+    if (R.alive) { const p = 0.75 + 0.25 * Math.sin(G.rt * 7.54); R.eye.material.color.setRGB(3 * p, 1.8 * p, 0.3 * p); R.pool.material.uniforms.uA.value = 0.8 + 0.2 * p; }
+    else if (R.deadT >= 0) { const t = G.t - R.deadT; const e = Math.max(0, 1 - t / 0.25); R.eye.material.color.setRGB(3 * e, 1.8 * e, 0.3 * e); R.eye.visible = e > 0; R.pool.material.uniforms.uA.value = Math.max(0, 1 - t / 0.6); R.pool.visible = t < 0.6; }
   }
 }
 function clearRelays() { for (const R of RELAYS) { scene.remove(R.g); world.removeBody(R.body); } RELAYS.length = 0; }
@@ -2185,7 +2199,9 @@ function hitRelay(R, dmg, at) {
     R.alive = false; world.removeBody(R.body);
     FX.explosion(_v2.set(R.x, 4, R.z), 3); sfx.explosion(); addTrauma(0.5); G.glitch = Math.max(G.glitch, 0.7);
     for (let k = 0; k < 60; k++) Powers.voxels.emit(R.x, rand(1, 7), R.z, rand(-5, 5), rand(1, 6), rand(-5, 5), rand(0.1, 0.24), rand(0.6, 1.2), 2.3, 2.3, 2.6, 8);
-    R.g.rotation.z = 1.35; R.g.position.y = -0.3; R.eye.visible = false;
+    R.g.rotation.z = 1.35; R.g.position.y = -0.3; R.deadT = G.t; R.pool.position.y = 0.33;   // eye and pool die out below
+    FX.sparks(_v2.set(R.x, 6.4, R.z), 20, 6, [1, 0.6, 0.1]);
+    if (level.floodFlicker) level.floodFlicker(R.x, R.z);
     num(_v2.set(R.x, 4.5, R.z), 'RELAY DOWN', 'psi', 1.3); gainXP(50, _v2.set(R.x, 3, R.z));
     const left = RELAYS.filter(r => r.alive).length;
     sayList([left ? ['radio', `Relay down. ${left} remaining.`] : ['radio', 'All relays down. We are blind on the plaza.']]);

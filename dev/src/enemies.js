@@ -246,9 +246,10 @@ function spawnDrone(type, def, x, z) {
     const spot = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: spotTexture(), color: new THREE.Color(0.95, 1.0, 1.1), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     spot.rotation.x = -Math.PI / 2; spot.renderOrder = 6; G.scene.add(spot); gear.spot = spot;
     // how far the count has got: an amber arc filling round the rim of the light
-    const arc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({ uniforms: { uProg: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+    // + a thin amber scanline sweeping the disc every 1.2 s: the count (lighting_vfx.md Fix 9)
+    const arc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({ uniforms: { uProg: { value: 0 }, uT: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
       vertexShader: 'varying vec2 vP; void main(){ vP = uv * 2.0 - 1.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: 'uniform float uProg; varying vec2 vP; void main(){ float r = length(vP); float a = atan(vP.y, vP.x) / 6.2832 + 0.5; float k = smoothstep(0.88, 0.9, r) * (1.0 - smoothstep(0.97, 0.99, r)) * step(a, uProg); gl_FragColor = vec4(vec3(2.4, 1.2, 0.3) * k, 1.0); }' }));
+      fragmentShader: 'uniform float uProg; uniform float uT; varying vec2 vP; void main(){ float r = length(vP); float a = atan(vP.y, vP.x) / 6.2832 + 0.5; float k = smoothstep(0.88, 0.9, r) * (1.0 - smoothstep(0.97, 0.99, r)) * step(a, uProg); float sx = fract(uT / 1.2) * 2.0 - 1.0; float scan = (1.0 - smoothstep(0.0, 0.02, abs(vP.y - sx))) * step(r, 0.9) * 0.8; gl_FragColor = vec4(vec3(2.4, 1.2, 0.3) * (k + scan), 1.0); }' }));
     arc.rotation.x = -Math.PI / 2; arc.renderOrder = 7; G.scene.add(arc); gear.arc = arc;
     const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 1, 1, 24, 1, true), new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
@@ -276,6 +277,7 @@ export function removeEnemy(e) {
   e.alive = false;
   G.scene.remove(e.root); G.world.removeBody(e.body); G.scene.remove(e.ring); G.scene.remove(e.blob);
   for (const k in e.gear) G.scene.remove(e.gear[k]);
+  if (e.beamSpot) e.beamSpot.k = 0;
   if (e.laser) G.scene.remove(e.laser);
   const i = G.enemies.indexOf(e); if (i >= 0) G.enemies.splice(i, 1);
 }
@@ -541,7 +543,14 @@ function updateDroneVisual(e, dt) {
     const hot = e.countT > 0 ? Math.min(1, e.countT / 1.4) : 0;
     e.gear.spot.material.color.setRGB(0.95 + hot * 1.4, 1.0 - hot * 0.7, 1.15 - hot * 0.95);
     e.gear.spot.visible = e.gear.cone.visible = !e.dead && e.state !== 'spawn';
-    if (e.gear.arc) { e.gear.arc.position.set(sp.x, 0.06, sp.z); e.gear.arc.scale.setScalar(R * 2); e.gear.arc.material.uniforms.uProg.value = hot; e.gear.arc.visible = e.gear.spot.visible && hot > 0; }
+    if (e.gear.arc) { e.gear.arc.position.set(sp.x, 0.06, sp.z); e.gear.arc.scale.setScalar(R * 2); e.gear.arc.material.uniforms.uProg.value = hot; e.gear.arc.material.uniforms.uT.value = G.rt; e.gear.arc.visible = e.gear.spot.visible; }
+    // a real light in the pool only when the beam is near her (12 m), so it can light her up without costing a slot otherwise
+    if (G.level && G.level.addSpot) {
+      if (!e.beamSpot) e.beamSpot = G.level.addSpot(sp.x, 1.4, sp.z, 0xffe2b0, 40, 9, 2);
+      e.beamSpot.p.set(sp.x, 1.4, sp.z);
+      const hp = G.hero && G.hero.body ? G.hero.body.position : null;
+      e.beamSpot.k = (!e.dead && e.gear.spot.visible && hp && Math.hypot(hp.x - sp.x, hp.z - sp.z) < 12) ? 1.6 : 0;
+    }
     const top = new THREE.Vector3(b.position.x, b.position.y - 0.6, b.position.z), bot = new THREE.Vector3(sp.x, 0, sp.z);
     const len = top.distanceTo(bot);
     e.gear.cone.position.copy(top).lerp(bot, 0.5); e.gear.cone.scale.set(R, len, R);

@@ -279,6 +279,7 @@ export function buildLevel(scene, world, wet) {
   const spots = L.spots;
   // all practicals use physical decay 2 now; old decay-1.6 intensities are scaled to land in the same place at ~3 m
   const addSpot = (x, y, z, color, intensity, distance, decay = 1.6, flick = 0) => { const s = { p: new THREE.Vector3(x, y, z), c: new THREE.Color(color), i: intensity * (decay < 2 ? 1.7 : 1), d: distance, decay: 2, flick, k: 1 }; spots.push(s); return s; };
+  L.addSpot = addSpot;
   const POOL = [];
   for (let i = 0; i < 6; i++) { const l = new THREE.PointLight(0xffffff, 0, 10, 2); l.userData.sp = null; l.userData.w = 0; scene.add(l); POOL.push(l); }
   const groundMat = new CANNON.Material('ground');
@@ -557,7 +558,7 @@ export function buildLevel(scene, world, wet) {
     halo.position.set(lx, 3.55, lz); halo.scale.setScalar(0.35); scene.add(halo);
     const haze = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(0.18, 0.13, 0.08), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     haze.position.set(lx, 3.5, lz); haze.scale.setScalar(1.8); scene.add(haze);
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(2.4, 3.4, 24, 1, true), coneMat); cone.position.set(lx, 3.45 - 1.7, lz); scene.add(cone);
+    // (no cone under a 3.45 m lamp: from above the pool decal does its job; lighting Fix 8)
     const b = new CANNON.Body({ mass: 0, collisionFilterGroup: GRP.STATIC, collisionFilterMask: ALL }); b.addShape(new CANNON.Cylinder(0.14, 0.18, 3.8, 8)); b.position.set(lx, 1.9, lz); world.addBody(b);
   }
   // LED halo lamps strung over the middle of Harrow Street (art panel: lit pools inside the gameplay frame every 14 m)
@@ -616,31 +617,69 @@ export function buildLevel(scene, world, wet) {
   moon.shadow.bias = -0.0005; moon.shadow.normalBias = 0.03;
   scene.add(moon); scene.add(moon.target); L.moon = moon;
 
-  // Rain: camera-facing streaks, slight wind, lit additively
-  const N = 1400;
+  // Rain that catches the light (lighting_vfx.md Fix 8): thin streaks lit by the 6 pool lights + her light, so it glows
+  // amber under lamps, pink by the neon and violet around Null, and is nearly invisible in the dark. No sticks at the lens.
+  const N = 1800;
   const rg = new THREE.InstancedBufferGeometry();
   rg.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
   rg.setIndex([0, 1, 2, 0, 2, 3]);
-  const off = new Float32Array(N * 4); for (let i = 0; i < N; i++) { off[i * 4] = rand(-14, 14); off[i * 4 + 1] = rand(0, 16); off[i * 4 + 2] = rand(-16, 14); off[i * 4 + 3] = Math.random(); }
+  const off = new Float32Array(N * 4); for (let i = 0; i < N; i++) { off[i * 4] = rand(-14, 14); off[i * 4 + 1] = rand(0, 9); off[i * 4 + 2] = rand(-16, 14); off[i * 4 + 3] = Math.random(); }
   const oattr = new THREE.InstancedBufferAttribute(off, 4); rg.setAttribute('aOff', oattr); rg.instanceCount = N;
+  const LP = Array.from({ length: 7 }, () => new THREE.Vector4()), LC = Array.from({ length: 7 }, () => new THREE.Vector3());
+  const LIT_GLSL = `uniform vec4 uLP[7]; uniform vec3 uLC[7];
+    vec3 litAt(vec3 wp) { vec3 lit = vec3(0.10, 0.12, 0.14); for (int i = 0; i < 7; i++) { vec3 d = wp - uLP[i].xyz; lit += uLC[i] * uLP[i].w * 0.04 / (1.0 + dot(d, d)); } return lit; }`;
   const rainMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uTime: { value: 0 }, uCenter: { value: new THREE.Vector3() } },
-    vertexShader: `attribute vec4 aOff; uniform float uTime; uniform vec3 uCenter; varying float vA; varying float vU;
+    uniforms: { uTime: { value: 0 }, uCenter: { value: new THREE.Vector3() }, uLP: { value: LP }, uLC: { value: LC } },
+    vertexShader: `attribute vec4 aOff; uniform float uTime; uniform vec3 uCenter; varying float vA; varying float vU; varying vec3 vLit;
+      ${LIT_GLSL}
       void main(){
         float fall = 22.0 + aOff.w * 6.0;
-        vec3 p = aOff.xyz; p.y = mod(p.y - uTime * fall, 16.0);
+        vec3 p = aOff.xyz; p.y = mod(p.y - uTime * fall, 9.0);
         p.x = uCenter.x + mod(p.x - uCenter.x + 14.0 + uTime * 1.2, 28.0) - 14.0;
         p.z = uCenter.z + mod(p.z - uCenter.z + 18.0, 32.0) - 18.0;
         vec3 camR = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
-        vec3 wp = p + camR * position.x * 0.018 + vec3(0.04, 1.0, 0.0) * position.y * 0.62;
-        vA = 0.14 + aOff.w * 0.16; vU = position.x + 0.5;
+        vec3 wp = p + camR * position.x * 0.012 + vec3(0.04, 1.0, 0.0) * position.y * 0.9;
+        vA = (0.14 + aOff.w * 0.16) * smoothstep(4.0, 8.0, distance(wp, cameraPosition)); vU = position.x + 0.5;
+        vLit = litAt(wp) * 2.0;
         gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
       }`,
-    fragmentShader: 'varying float vA; varying float vU; void main(){ float e = 1.0 - abs(vU - 0.5) * 2.0; gl_FragColor = vec4(vec3(0.55, 0.62, 0.78) * vA * e, 1.0); }',
+    fragmentShader: 'varying float vA; varying float vU; varying vec3 vLit; void main(){ float e = 1.0 - abs(vU - 0.5) * 2.0; gl_FragColor = vec4(vLit * vA * e, 1.0); }',
   });
+  // splash rings: 160 instanced rings with a 0.3 s life, respawned around the view (~530 a second), lit the same way
+  const SPN = 160, spGeo = new THREE.InstancedBufferGeometry();
+  spGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1], 3)); spGeo.setIndex([0, 2, 1, 0, 3, 2]);
+  const spA = new Float32Array(SPN * 3); for (let i = 0; i < SPN; i++) { spA[i * 3 + 2] = -1 - Math.random() * 0.3; }
+  const spAttr = new THREE.InstancedBufferAttribute(spA, 3); spGeo.setAttribute('aSp', spAttr); spGeo.instanceCount = SPN;
+  const splashMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uTime: { value: 0 }, uLP: { value: LP }, uLC: { value: LC } },
+    vertexShader: `attribute vec3 aSp; uniform float uTime; varying vec2 vQ; varying float vT; varying vec3 vLit;
+      ${LIT_GLSL}
+      void main(){ vT = clamp((uTime - aSp.z) / 0.3, 0.0, 1.0); float r = 0.02 + 0.14 * vT; vQ = position.xz; vec3 wp = vec3(aSp.x + position.x * r, 0.015, aSp.y + position.z * r); vLit = litAt(wp + vec3(0.0, 0.4, 0.0)) * 3.0; gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0); }`,
+    fragmentShader: `varying vec2 vQ; varying float vT; varying vec3 vLit; void main(){ float d = length(vQ); float ring = smoothstep(0.72, 0.86, d) * (1.0 - smoothstep(0.86, 1.0, d)); if (vT >= 1.0) discard; gl_FragColor = vec4(vLit * ring * 0.5 * (1.0 - vT), 1.0); }`,
+  });
+  const splashes = new THREE.Mesh(spGeo, splashMat); splashes.frustumCulled = false; splashes.renderOrder = 3; scene.add(splashes); wet.hide.push(splashes);
+  let spNext = 0;
+  // ground-hugging mist cards: horizontal noise quads that drift with the wind, tinted toward the nearest light
+  const mistTex = (() => { const S = 128; const [c, x] = canvas(S, S); const img = x.createImageData(S, S); const h = (a, b) => { const v = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return v - Math.floor(v); };
+    const n2 = (u, v, f) => { const i = Math.floor(u * f), j = Math.floor(v * f), fu = u * f - i, fv = v * f - j, w = (q) => ((q % f) + f) % f, s2 = (t) => t * t * (3 - 2 * t); const a = h(w(i), w(j)), b = h(w(i + 1), w(j)), cc = h(w(i), w(j + 1)), d = h(w(i + 1), w(j + 1)); return a + (b - a) * s2(fu) + (cc - a) * s2(fv) + (a - b - cc + d) * s2(fu) * s2(fv); };
+    for (let y = 0; y < S; y++) for (let xx = 0; xx < S; xx++) { const u = xx / S, v = y / S, n = n2(u, v, 4) * 0.65 + n2(u, v, 8) * 0.35, e = Math.min(1, 4 * Math.min(u, 1 - u, v, 1 - v) + 0.2); const val = Math.max(0, n - 0.35) * 1.6 * e * 255; const k = (y * S + xx) * 4; img.data[k] = img.data[k + 1] = img.data[k + 2] = 255; img.data[k + 3] = val; }
+    x.putImageData(img, 0, 0); const t = new THREE.CanvasTexture(c); return t; })();
+  const MISTN = 12, mistGeo = new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI / 2), mistCol = new THREE.Color(0.03, 0.04, 0.045);
+  const mistMat = new THREE.MeshBasicMaterial({ map: mistTex, color: mistCol, transparent: true, opacity: 0.07, depthWrite: false, fog: false });
+  const mists = []; for (let i = 0; i < MISTN; i++) { const m = new THREE.Mesh(mistGeo, mistMat); m.position.set(rand(-15, 15), 0.4 + Math.random() * 0.8, rand(-15, 15)); m.rotation.y = Math.random() * 6; m.renderOrder = 14; scene.add(m); wet.hide.push(m); L.noBatch.push(m); mists.push(m); }
+  // per-zone atmosphere (lighting_vfx.md Appendix A): hemisphere, moon, fog, exposure, wetness and mist lerp over 1.5 s
+  const ZL = [
+    ['#3d5a66', 0.22, 0.38, '#0b1216', 0.022, 1.20, 1.0, 8, 0.07], ['#46606a', 0.26, 0.40, '#0d1418', 0.020, 1.15, 0.85, 6, 0.06],
+    ['#3d5a66', 0.18, 0.34, '#0b1216', 0.030, 1.20, 0.9, 8, 0.07], ['#3d5a66', 0.16, 0.30, '#0e1214', 0.020, 1.15, 0.6, 6, 0.06],
+    ['#50707a', 0.24, 0.30, '#0e1a1f', 0.026, 1.10, 0.25, 8, 0.08], ['#34505a', 0.14, 0.28, '#0a1013', 0.032, 1.20, 1.0, 6, 0.08],
+    ['#3d5a66', 0.18, 0.36, '#0d1215', 0.024, 1.20, 0.8, 8, 0.07], ['#3d5a66', 0.20, 0.40, '#0c1316', 0.022, 1.15, 0.9, 8, 0.07],
+    ['#3a5866', 0.20, 0.55, '#0c1418', 0.028, 1.20, 1.0, 12, 0.10], ['#3a5866', 0.18, 0.45, '#0d1519', 0.034, 1.15, 1.0, 12, 0.10],
+  ].map(([hc, hi, mi, fc, fd, ex, wt, mn, ma]) => ({ hc: new THREE.Color(hc), hi, mi, fc: new THREE.Color(fc), fd, ex, wt, mn, ma }));
+  const ZC = { hc: new THREE.Color(0x3d5a66), hi: 0.22, mi: 0.38, fc: new THREE.Color(0x0b1216), fd: 0.022, ex: 1.2, wt: 1, mn: 8, ma: 0.07 };
+  let mistTint = new THREE.Color(1, 1, 1), mistTintT = 0, lastZ = 0;
   const rain = new THREE.Mesh(rg, rainMat); rain.frustumCulled = false; rain.renderOrder = 15; scene.add(rain); wet.hide.push(rain);
-  const _sd = [];
+  const _sd = [], _hl = new THREE.Vector3(), _mt = new THREE.Color(1, 1, 1);
   L.update = (dt, center) => {
     kit.update(dt);
     if (L.updateGround) L.updateGround(dt, center);
@@ -670,7 +709,23 @@ export function buildLevel(scene, world, wet) {
     if (L.updateExtra) L.updateExtra(dt, center);
     rainMat.uniforms.uTime.value += dt; rainMat.uniforms.uCenter.value.copy(center);
     wet.uniforms.uTime.value += dt;
-    if (G.fx && Math.random() < 0.9) for (let k = 0; k < 3; k++) G.fx.add.emit(center.x + rand(-9, 9), 0.04, center.z + rand(-12, 8), 0, rand(0.5, 1.1), 0, 0.45, 0.5, 0.62, 0.22, 0.06, 0.015, 5, 0, 0.6);
+    // lights for the rain and splashes: the 6 pool lights + her violet light
+    POOL.forEach((l, i) => { LP[i].set(l.position.x, l.position.y, l.position.z, l.intensity); LC[i].set(l.color.r, l.color.g, l.color.b); });
+    if (G.hero && G.hero.light) { G.hero.light.getWorldPosition(_hl); LP[6].set(_hl.x, _hl.y, _hl.z, G.hero.light.intensity * 6); LC[6].set(0.65, 0.55, 1.0); }
+    const st = rainMat.uniforms.uTime.value; splashMat.uniforms.uTime.value = st;
+    for (let k = 0, n = Math.min(SPN, Math.round(530 * dt) + (Math.random() < (530 * dt) % 1 ? 1 : 0)); k < n; k++) { const i = spNext; spNext = (spNext + 1) % SPN; spA[i * 3] = center.x + rand(-12, 12); spA[i * 3 + 1] = center.z + rand(-18, 12); spA[i * 3 + 2] = st - Math.random() * 0.05; }
+    spAttr.needsUpdate = true;
+    // atmosphere for the zone she's in
+    { const zq = zoneAt(center.x, center.z); if (zq >= 0) lastZ = zq; const Z = ZL[lastZ] || ZL[0], a = Math.min(1, dt / 1.5 * 3);
+      ZC.hc.lerp(Z.hc, a); ZC.fc.lerp(Z.fc, a); for (const k of ['hi', 'mi', 'fd', 'ex', 'wt', 'mn', 'ma']) ZC[k] += (Z[k] - ZC[k]) * a;
+      hemi.color.copy(ZC.hc); hemi.intensity = ZC.hi; moon.intensity = ZC.mi;
+      if (scene.fog && scene.fog.isFogExp2) { scene.fog.color.copy(ZC.fc); scene.fog.density = ZC.fd; }
+      if (G.renderer) G.renderer.toneMappingExposure = ZC.ex;
+      wet.uniforms.uWet.value = ZC.wt;
+      // mist: re-centred on the view as it drifts with the wind; tinted toward the strongest nearby light every 0.5 s
+      mistTintT -= dt; if (mistTintT <= 0) { mistTintT = 0.5; let best = null, bi = 0; for (const l of POOL) if (l.intensity > bi) { bi = l.intensity; best = l; } _mt.copy(best ? best.color : _mt.set(1, 1, 1)); }
+      mistTint.lerp(_mt, Math.min(1, dt * 2)); mistMat.color.copy(ZC.fc).multiplyScalar(6.0).lerp(mistTint.clone().multiplyScalar(0.16), 0.35); mistMat.opacity = ZC.ma;
+      mists.forEach((m, i) => { m.visible = i < Math.round(ZC.mn); m.position.x += 0.4 * dt; const dx = m.position.x - center.x, dz = m.position.z - (center.z - 3); if (dx > 15) m.position.x -= 30; if (dx < -15) m.position.x += 30; if (dz > 15) m.position.z -= 30; if (dz < -15) m.position.z += 30; }); }
   };
   // ---- light on the ground (art panel): every light leaves a pool, every shop spills onto the pavement, and the wet street
   //      carries a long reflection streak toward the viewer from whatever is lit nearby. Three draw calls in total.
@@ -1151,6 +1206,7 @@ function buildPier9(C) {
   L.updateExtra = (dt, center) => {
     if (L.roofLed) L.roofLed.visible = ((G.rt || 0) * 0.5) % 1 < 0.5;
     if (L.beaconMat) L.beaconMat.uniforms.uT.value = G.rt || 0;
+    if (L.floods) for (const f of L.floods) if (f.seq) { const t = G.rt - f.seq; f.k = t < 0.6 ? ((t * 5) % 1 < 0.5 ? 0.1 : 1) : 0.4; if (f.lens) f.lens.visible = f.k > 0.3; }
     if (G.fx) L.vents.forEach(([vx, vz], i) => { if (Math.abs(vz - center.z) < 22 && Math.abs(vx - center.x) < 28 && Math.random() < 0.55) { const c = L.ventCol[i], lo = Math.random() < 0.6; G.fx.smoke.emit(vx + rand(-0.3, 0.3), 0.1, vz + rand(-0.3, 0.3), rand(-0.15, 0.15), rand(0.8, 1.6), rand(-0.15, 0.15), 0.22 + c[0] * (lo ? 0.4 : 0.15), 0.23 + c[1] * (lo ? 0.4 : 0.15), 0.27 + c[2] * (lo ? 0.4 : 0.15), rand(1.2, 2.2), 0.18, 0.9, -0.15, 0.5, 0.55); } });
     if (L.ventShafts) L.ventShafts.uniforms.uT.value = G.rt;
     const blink = (G.rt % 1.6) < 0.5 ? 1 : 0.05;
@@ -1194,7 +1250,7 @@ function buildExpansion(C, H) {
     addSpot(x, 3.45, z, 0xffbf80, 30, 15, 1.5);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(2.0, 1.4, 0.8), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); halo.position.set(x, 3.55, z); halo.scale.setScalar(0.35); scene.add(halo);
     { const hz = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: new THREE.Color(0.18, 0.13, 0.08), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); hz.position.set(x, 3.5, z); hz.scale.setScalar(1.8); scene.add(hz); }
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(2.4, 3.4, 24, 1, true), coneMat); cone.position.set(x, 1.75, z); scene.add(cone);
+    // (no cone under a low lamp: the pool decal does its job from above)
     statCyl(x, 1.9, z, 0.16, 3.8);
   };
   const mast = (x, z, h = 10, col = 0xffa648, inten = 44) => {
@@ -1275,6 +1331,15 @@ function buildExpansion(C, H) {
   // low on the south face of the north block: from the plaza camera that wall is only in frame below y ~7 m
   { const m = new THREE.Mesh(new THREE.PlaneGeometry(11, 5.5), new THREE.MeshBasicMaterial({ map: weilTex, color: new THREE.Color(1.3, 1.3, 1.4), toneMapped: false })); m.position.set(56, 4.25, -29.93); scene.add(m); addSpot(56, 4.5, -27.5, 0x9fc0ff, 16, 14, 1.6); }
   sign('TALLY CLINIC', '#19e3ff', true, 30.0, 6, -24, Math.PI / 2, 1.2, 5);
+  // two flood masts: the Census lights its own space hard and cold (lighting_vfx.md Fix 9); relays going down put them out
+  L.floods = [];
+  for (const [fx, fz] of [[33.5, -27.5], [59.5, 1.5]]) {
+    mesh(new THREE.CylinderGeometry(0.14, 0.2, 9, 8), metal, fx, 4.5, fz, 0); statCyl(fx, 4.5, fz, 0.2, 9);
+    mesh(new THREE.BoxGeometry(1.4, 0.3, 0.6), metal, fx, 9.1, fz, 0);
+    const lens = mesh(new THREE.BoxGeometry(1.2, 0.04, 0.45), glowMat(2.6, 2.8, 3.0), fx, 8.93, fz, 0, false);
+    const sp = addSpot(fx, 8.6, fz, 0xe6f0ff, 46, 26, 1.4); sp.lens = lens; L.floods.push(sp);
+  }
+  L.floodFlicker = (x, z) => { let best = null, bd = 1e9; for (const f of L.floods) { const d = Math.hypot(f.p.x - x, f.p.z - z); if (d < bd && !f.seq) { bd = d; best = f; } } if (best) best.seq = G.rt; };
   // planters + benches + tram shelter
   const planterMat = pbr('concrete_wall_008', 1, 0.4);
   const leaf = new THREE.MeshStandardMaterial({ color: 0x1d2a1a, roughness: 0.9 });
