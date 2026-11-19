@@ -14,10 +14,10 @@ const FEMALE = { idle: 'f_idle_angry_01', walk: 'f_walk_cool_01', run: 'f_run_fa
 const CIVM = { idle: 'm_idle_neutral_01', walk: 'm_walk_cool_01', run: 'm_run_fast_01', hwalk: 'm_walk_bruised', hrun: 'm_run_injured' };
 export const ETYPES = {
   counter:  { hp: 60,  speed: 3.9, mass: 80,  scale: 1.0,  model: 'counter',  clips: MALE,   stagger: 14, grip: true, label: 'COUNTER', walkRef: 1.5, runRef: 5.0 },
-  marksman: { hp: 50,  speed: 3.4, mass: 75,  scale: 1.0,  model: 'marksman', clips: FEMALE, stagger: 12, grip: true, label: 'MARKSMAN', walkRef: 1.45, runRef: 5.2 },
-  lobber:   { hp: 55,  speed: 3.2, mass: 85,  scale: 1.04, model: 'counter',  clips: MALE,   stagger: 14, grip: true, label: 'LOBBER', walkRef: 1.5, runRef: 5.0 },
+  marksman: { hp: 50,  speed: 3.4, mass: 75,  scale: 0.97, model: 'marksman2', clips: FEMALE, stagger: 12, grip: true, label: 'MARKSMAN', walkRef: 1.45, runRef: 5.2 },
+  lobber:   { hp: 55,  speed: 3.2, mass: 85,  scale: 1.04, model: 'lobber',   clips: MALE,   stagger: 14, grip: true, label: 'LOBBER', walkRef: 1.5, runRef: 5.0 },
   auditor:  { hp: 520, speed: 2.5, mass: 650, scale: 1.62, model: 'auditor',  clips: { idle: 'aud_idle', walk: 'aud_walk', run: 'aud_run' }, stagger: 9999, grip: false, label: 'AUDITOR', walkRef: 1.3, runRef: 4.0 },
-  warden:   { hp: 95,  speed: 2.7, mass: 110, scale: 1.08, model: 'counter',  clips: MALE,   stagger: 26, grip: true, label: 'WARDEN', walkRef: 1.5, runRef: 5.0, shield: true },
+  warden:   { hp: 95,  speed: 2.7, mass: 110, scale: 1.08, model: 'marksman', clips: MALE,   stagger: 26, grip: true, label: 'WARDEN', walkRef: 1.5, runRef: 5.0, shield: true },
   informant:{ hp: 40,  speed: 5.6, mass: 70,  scale: 0.97, model: 'civ_m',  clips: CIVM,   stagger: 6,  grip: true, label: 'INFORMANT', walkRef: 1.5, runRef: 5.0 },
   clerk:    { hp: 26,  speed: 4.4, mass: 10,  scale: 1.0,  drone: 'clerk', stagger: 1, grip: true, label: 'CLERK', hover: 2.5 },
   lamplighter: { hp: 640, speed: 3.0, mass: 400, scale: 1.0, drone: 'lamp', stagger: 9999, grip: false, label: 'LAMPLIGHTER', hover: 7.5, boss: true },
@@ -155,6 +155,11 @@ export function spawnEnemy(type, x, z) {
   const s = def.scale;
   const root = new THREE.Group(); const model = new THREE.Group(); root.add(model); model.add(c.obj);
   c.obj.scale.setScalar(s * (type === 'auditor' ? 1 : 1));
+  // per-type silhouettes (characters.md Fix 10): Security cap brim (Marksman), fire helmet + air cylinder (Lobber), riot
+  // visor + bulk (Warden); hide the gear each model carries that isn't ours
+  if (type === 'warden') c.obj.scale.set(s * 1.055, s, s * 1.055);
+  const HIDE = { marksman: /pistol/, lobber: /flashlight/, warden: /machinegun|shotgun|pistol/ }[type];
+  if (HIDE) c.obj.traverse(o => { if (o.isMesh && HIDE.test(o.material.name)) o.visible = false; });
   model.position.y = -0.85 * s;
   const B = c.bones;
   const bones = type === 'auditor'

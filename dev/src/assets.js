@@ -7,7 +7,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 // motion-capture clips (Microsoft Rocketbox, MIT), heavy armour unit (Mixamo Vanguard).
 export const A = { gltf: {}, clips: {}, tex: {}, env: null, ready: false };
 
-const MODELS = ['iris', 'counter', 'marksman', 'auditor', 'civ_m', 'civ_f', 'trashcan', 'barrel_red', 'barrel_blue', 'crate', 'barrier', 'covered_car',
+const MODELS = ['iris', 'counter', 'marksman', 'marksman2', 'lobber', 'auditor', 'civ_m', 'civ_f', 'trashcan', 'barrel_red', 'barrel_blue', 'crate', 'barrier', 'covered_car',
   'utility_box', 'trashbag', 'cardboard', 'hydrant', 'street_lamp', 'fire_barrel'];
 const ANIMS = ['f_idle_neutral_01', 'f_walk_cool_01', 'f_run_fast_01', 'm_idle_neutral_01', 'm_walk_cool_01', 'm_run_fast_01',
   'm_idle_angry_01', 'f_idle_angry_01', 'm_crouch_idle', 'f_crouch_idle', 'm_walk_bruised', 'm_run_injured', 'f_walk_bruised', 'f_run_injured'];
