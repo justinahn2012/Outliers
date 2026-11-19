@@ -3,6 +3,7 @@ import * as CANNON from 'cannon-es';
 import { G, GRP, ALL, clamp, damp, rand } from './state.js';
 import { makeCharacter, findBone, blobShadow, addRim } from './assets.js';
 import { makeShieldVisual } from './shield.js';
+import { drawLedger } from './ledger.js';
 import { aimArm, twoBoneIK, blendLocomotion, softTex } from './hero.js';
 
 // The Census: tactical "Counters" in black kit, visor-helmeted Marksmen, Lobbers with grenade packs,
@@ -157,8 +158,8 @@ export function spawnEnemy(type, x, z) {
   model.position.y = -0.85 * s;
   const B = c.bones;
   const bones = type === 'auditor'
-    ? { rU: findBone(B, 'mixamorigRightArm'), rF: findBone(B, 'mixamorigRightForeArm'), rH: findBone(B, 'mixamorigRightHand'), lU: findBone(B, 'mixamorigLeftArm'), lF: findBone(B, 'mixamorigLeftForeArm'), lH: findBone(B, 'mixamorigLeftHand'), spine: findBone(B, 'mixamorigSpine2'), lT: findBone(B, 'mixamorigLeftUpLeg'), rT: findBone(B, 'mixamorigRightUpLeg') }
-    : { head: findBone(B, 'Bip01_Head'), rU: findBone(B, 'Bip01_R_UpperArm'), rF: findBone(B, 'Bip01_R_Forearm'), rH: findBone(B, 'Bip01_R_Hand'), lU: findBone(B, 'Bip01_L_UpperArm'), lF: findBone(B, 'Bip01_L_Forearm'), lH: findBone(B, 'Bip01_L_Hand'), spine: findBone(B, 'Bip01_Spine2'), lT: findBone(B, 'Bip01_L_Thigh'), rT: findBone(B, 'Bip01_R_Thigh') };
+    ? { rU: findBone(B, 'mixamorigRightArm'), rF: findBone(B, 'mixamorigRightForeArm'), rH: findBone(B, 'mixamorigRightHand'), lU: findBone(B, 'mixamorigLeftArm'), lF: findBone(B, 'mixamorigLeftForeArm'), lH: findBone(B, 'mixamorigLeftHand'), spine: findBone(B, 'mixamorigSpine2'), lT: findBone(B, 'mixamorigLeftUpLeg'), rT: findBone(B, 'mixamorigRightUpLeg'), lC: findBone(B, 'mixamorigLeftLeg'), rC: findBone(B, 'mixamorigRightLeg'), head: findBone(B, 'mixamorigHead') }
+    : { head: findBone(B, 'Bip01_Head'), rU: findBone(B, 'Bip01_R_UpperArm'), rF: findBone(B, 'Bip01_R_Forearm'), rH: findBone(B, 'Bip01_R_Hand'), lU: findBone(B, 'Bip01_L_UpperArm'), lF: findBone(B, 'Bip01_L_Forearm'), lH: findBone(B, 'Bip01_L_Hand'), spine: findBone(B, 'Bip01_Spine2'), lT: findBone(B, 'Bip01_L_Thigh'), rT: findBone(B, 'Bip01_R_Thigh'), lC: findBone(B, 'Bip01_L_Calf'), rC: findBone(B, 'Bip01_R_Calf') };
   const hb = bar(); root.add(hb.bg); root.add(hb.fg);
   G.scene.add(root);
   const ring = threatRing(s, type); G.scene.add(ring);
@@ -168,6 +169,24 @@ export function spawnEnemy(type, x, z) {
   if (type === 'counter' || type === 'auditor') {
     gear.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: softTex(), color: type === 'auditor' ? new THREE.Color(2.2, 0.3, 0.2) : new THREE.Color(2.2, 1.1, 0.25), transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
     gear.glow.scale.setScalar(type === 'auditor' ? 0.6 : 0.32); G.scene.add(gear.glow);
+  }
+  if (type === 'auditor') {
+    // Dash Okoro: the armour is a freezer, he runs hot (characters.md). Cold enamel plates, a red visor, a back counter
+    // that ticks constantly and freezes on 0001 while he targets her ("counts her as one"), two hot vents, steam.
+    c.obj.traverse(o => { if (!o.isMesh) return; if (/visor/i.test(o.name)) { o.material.emissive = new THREE.Color(0xff2a1a); o.material.emissiveIntensity = 2.0; o.material.color.setRGB(0.2, 0.02, 0.02); } else o.material.color.multiply(new THREE.Color(0.8, 0.86, 0.92)); });
+    const [cc, cx] = (() => { const c2 = document.createElement('canvas'); c2.width = 128; c2.height = 48; return [c2, c2.getContext('2d')]; })();
+    const ct = new THREE.CanvasTexture(cc);
+    const cm = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.12), new THREE.MeshBasicMaterial({ map: ct, toneMapped: false, transparent: true }));
+    G.scene.add(cm); gear.counter = cm; gear.counterPaint = (txt) => { cx.fillStyle = '#0a0604'; cx.fillRect(0, 0, 128, 48); drawLedger(cx, txt, 64, 8, 32, '#ffb040', { ghost: 0.12, align: 'center' }); ct.needsUpdate = true; };
+    gear.counterPaint('4118');
+    const vm = new THREE.MeshStandardMaterial({ color: 0x1a0804, emissive: 0xff5a20, emissiveIntensity: 1.5 });
+    gear.vents = [0, 1].map(() => { const v = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.02), vm); G.scene.add(v); return v; });
+  }
+  if (type === 'warden') {
+    // pauldrons widen his shoulder line ~0.2 m: "heavy" from above, with a cyan edge (characters.md Fix 10)
+    const pm = new THREE.MeshStandardMaterial({ color: 0x1c1f24, metalness: 0.35, roughness: 0.45 }), em = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 1.0, 1.15), toneMapped: false });
+    gear.pauldrons = [0, 1].map(() => { const g = new THREE.Group(); const cap = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), pm); cap.scale.set(1, 0.55, 1.15); cap.castShadow = true; g.add(cap);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.008, 4, 20), em); rim.rotation.x = Math.PI / 2; rim.scale.set(1, 1.15, 1); g.add(rim); G.scene.add(g); return g; });
   }
   if (type === 'counter') {
     // stun baton in the right hand: a red rod you can see from above (characters.md Fix 5); origin at the grip, along +Y
@@ -276,7 +295,7 @@ function spawnDrone(type, def, x, z) {
 export function removeEnemy(e) {
   e.alive = false;
   G.scene.remove(e.root); G.world.removeBody(e.body); G.scene.remove(e.ring); G.scene.remove(e.blob);
-  for (const k in e.gear) G.scene.remove(e.gear[k]);
+  for (const k in e.gear) { const g = e.gear[k]; if (Array.isArray(g)) for (const q of g) G.scene.remove(q); else G.scene.remove(g); }
   if (e.beamSpot) e.beamSpot.k = 0;
   if (e.laser) G.scene.remove(e.laser);
   const i = G.enemies.indexOf(e); if (i >= 0) G.enemies.splice(i, 1);
@@ -306,7 +325,7 @@ export function setRagdoll(e, on) {
 }
 
 const _q = new THREE.Quaternion(), _up = new THREE.Vector3(0, 1, 0), _p = new THREE.Vector3(), _t = new THREE.Vector3(), _f = new THREE.Vector3();
-const _bt = new THREE.Vector3();
+const _bt = new THREE.Vector3(), _grey = new THREE.Color(0.35, 0.35, 0.35);
 const _e = new THREE.Euler();
 
 export function updateEnemyVisual(e, dt) {
@@ -402,6 +421,15 @@ export function updateEnemyVisual(e, dt) {
       B.lU.getWorldPosition(_p); _t.set(_p.x + fx * (up ? 0.2 : 1.5), _p.y + (up ? 1.6 : -1.0), _p.z + fz * (up ? 0.2 : 1.5));
       aimArm(B.lU, B.lF, B.lH, _t, 1);
     }
+  } else if (B.rU && e.dead) {
+    // dead: a limp body that folds (characters.md Fix 9) - knees and hips flex, head and spine slump, arms trail
+    e.limpK = Math.min(1, (e.limpK || 0) + dt / 0.15); const k = e.limpK;
+    _f.set(1, 0, 0).applyQuaternion(e.root.quaternion);
+    if (B.spine) bendBone(B.spine, _f, 0.35 * k); if (B.head) bendBone(B.head, _f, 0.45 * k);
+    if (B.lT) bendBone(B.lT, _f, -0.55 * k); if (B.rT) bendBone(B.rT, _f, -0.85 * k);
+    if (B.lC) bendBone(B.lC, _f, 0.9 * k); if (B.rC) bendBone(B.rC, _f, 0.6 * k);
+    const v = e.body.velocity;
+    for (const [U, F, H] of [[B.rU, B.rF, B.rH], [B.lU, B.lF, B.lH]]) { if (!U) continue; U.getWorldPosition(_p); _t.set(_p.x - v.x * 0.12, _p.y - 0.35 - v.y * 0.12, _p.z - v.z * 0.12); aimArm(U, F, H, _t, 0.85 * k); }
   } else if (B.rU) {
     // limp / flailing: arms thrown out, legs kicking
     e.flailPh += dt * (e.state === 'gripped' ? 11 : 4);
@@ -417,6 +445,21 @@ export function updateEnemyVisual(e, dt) {
   }
   // gear placement
   if (e.gear.glow && B.rH) { B.rH.getWorldPosition(_p); e.gear.glow.position.copy(_p); e.gear.glow.material.opacity = e.dead ? 0 : (e.state === 'windup' || e.state === 'slamWind' ? 1 : 0.45) * (0.8 + Math.sin(G.rt * 20) * 0.2); }
+  if (e.gear.counter && B.spine) {
+    B.spine.getWorldPosition(_p); _f.set(0, 0, 1).applyQuaternion(e.root.quaternion);
+    const cm = e.gear.counter; cm.position.copy(_p).addScaledVector(_f, -0.2 * e.def.scale); cm.position.y += 0.05 * e.def.scale; cm.quaternion.copy(e.root.quaternion); cm.rotateY(Math.PI); cm.scale.setScalar(e.def.scale); cm.visible = e.fade > 0.3;
+    const lock = !e.dead && (e.state === 'chargeWind' || e.state === 'slamWind' || e.state === 'charge' || e.state === 'slam' || e.state === 'aim');
+    const txt = lock ? '0001' : String(4118 + Math.floor(G.rt * 7) % 5800).padStart(4, '0');
+    if (txt !== e.counterTxt) { e.counterTxt = txt; e.gear.counterPaint(txt); }
+    const hot = e.hp < e.maxHp * 0.5 ? 1.8 : 1, pulse = 0.6 + 0.4 * Math.sin(G.rt * 5.03);
+    _t.set(1, 0, 0).applyQuaternion(e.root.quaternion);
+    e.gear.vents.forEach((v, k) => { v.position.copy(cm.position).addScaledVector(_f, -0.01).addScaledVector(_t, (k ? 1 : -1) * 0.12 * e.def.scale); v.position.y += 0.14 * e.def.scale; v.quaternion.copy(cm.quaternion); v.scale.setScalar(e.def.scale); v.material.emissiveIntensity = 1.5 * pulse * hot; v.visible = cm.visible; });
+    e.steamT = (e.steamT || 0) - dt;
+    if (e.steamT <= 0 && !e.dead && G.fx && B.lU && B.rU) { e.steamT = 0.5; for (const U of [B.lU, B.rU]) { U.getWorldPosition(_t); G.fx.smoke.emit(_t.x, _t.y + 0.2, _t.z, rand(-0.2, 0.2), rand(0.6, 1.2), rand(-0.2, 0.2), 0.6, 0.62, 0.66, rand(0.8, 1.4), 0.15, 0.6, -0.1, 0.4, 0.4); } }
+  }
+  if (e.gear.pauldrons && B.lU && B.rU) {
+    [B.lU, B.rU].forEach((U, k) => { const pd = e.gear.pauldrons[k]; U.getWorldPosition(_p); pd.position.set(_p.x, _p.y + 0.06, _p.z); pd.quaternion.copy(e.root.quaternion); pd.visible = e.fade > 0.3; });
+  }
   if (e.gear.baton && B.rH && B.rF) {
     B.rH.getWorldPosition(_p); B.rF.getWorldPosition(_bt);
     _bt.subVectors(_p, _bt).normalize().lerp(_up, 0.55).normalize();
@@ -456,7 +499,8 @@ export function updateEnemyVisual(e, dt) {
   if (e.pop > 0) { e.pop -= dt; if (e.pop <= 0) setEnemyGlow(e, e.glow); }
   const tele = e.state === 'windup' || e.state === 'aim' || e.state === 'throw' || e.state === 'slamWind' || e.state === 'chargeWind';
   e.tele = (e.tele || 0) + ((tele ? 1 : 0) - (e.tele || 0)) * Math.min(1, dt * 10);
-  e.ring.material.opacity = e.dead ? Math.max(0, e.fade - 0.3) : (e.state === 'spawn' ? Math.min(1, e.spawnT * 2) : 0.85 + e.tele * 0.6);
+  if (e.dead) { e.ringDie = Math.max(0, (e.ringDie ?? 0.2) - dt); if (e.ring.material.color) e.ring.material.color.lerp(_grey, Math.min(1, dt * 12)); }
+  e.ring.material.opacity = e.dead ? 0.8 * Math.max(0, e.ringDie / 0.2) : (e.state === 'spawn' ? Math.min(1, e.spawnT * 2) : 0.85 + e.tele * 0.6);
   e.ring.scale.setScalar(1 + e.tele * (0.18 + Math.sin(G.rt * 22) * 0.08));
   e.ring.visible = e.ring.material.opacity > 0.01;
   const air = Math.max(0, b.position.y - 0.85 * s);

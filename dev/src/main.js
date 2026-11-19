@@ -18,9 +18,10 @@ import { makeTrails } from './trails.js';
 import { makeTally } from './tally.js';
 import { makeProp, removeProp, setGlow, applyDamageLook, populateZone, DEFS } from './props.js';
 import { createHero, updateHeroVisual, blendLocomotion } from './hero.js';
+import { makeScarf } from './scarf.js';
 import { spawnEnemy, removeEnemy, updateEnemyVisual, setRagdoll, setEnemyGlow, ETYPES } from './enemies.js';
 import { initInput, moveVector, input } from './input.js';
-import { loadAssets, A, makeCharacter } from './assets.js';
+import { loadAssets, A, makeCharacter, addRim } from './assets.js';
 import { Powers, Shock, Front, sharedHaloTexture as sharedHalo } from './powers.js';
 import { ZONES, GATES, zoneAt, rectOf } from './level.js';
 import { CHAPTER } from './chapter1.js';
@@ -201,7 +202,7 @@ async function boot() {
   world.addContactMaterial(new CANNON.ContactMaterial(G.charMat, G.groundMat, { friction: 0, restitution: 0 }));
   world.addContactMaterial(new CANNON.ContactMaterial(G.charMat, G.charMat, { friction: 0, restitution: 0 }));
   world.addContactMaterial(new CANNON.ContactMaterial(G.charMat, G.propMat, { friction: 0.02, restitution: 0.05 }));
-  hero = createHero();
+  hero = createHero(); G.scarf = makeScarf(scene, hero);
   G.hero = hero;
   loadProgress(); applyStats(false); hero.hp = hero.maxHp; hero.focus = hero.maxFocus; buildFragments();
   { const st = ZONES[PROG.checkpoint || 0].start; hero.body.position.set(st[0], 0.85, st[1]); }
@@ -1264,13 +1265,21 @@ function updateEnemy(e, dt) {
       e.downT += dt;
       const sp = speedOf(b);
       e.restT = (e.downT > 0.9 && sp < 1.4) ? (e.restT || 0) + dt : 0;
-      if ((e.restT > 0.1 && (b.position.y < 1.4 * s || e.restT > 1.2)) || (e.dead && e.downT > 4)) {
+      if ((e.restT > 0.1 && (b.position.y < 1.4 * s || e.restT > 1.2)) || (e.dead && e.downT > 1.6)) {
         if (e.dead) {
-          // counted out: the record is deleted block by block and the pieces lift away in Census amber
-          if (!e.deleting) { e.deleting = true; sfx.stamp(); FX.rings.spawn(b.position.x, 0.05, b.position.z, 0.3, 1.8, 0.5, 0xffa040, 0.9); }
-          e.fade -= dt * 1.25;
-          const bl = e.bones ? Object.values(e.bones).filter(Boolean) : null;
-          if (bl && bl.length) for (let k = 0; k < 3; k++) { bl[(Math.random() * bl.length) | 0].getWorldPosition(_v3); Powers.voxels.emit(_v3.x + rand(-0.1, 0.1), _v3.y, _v3.z + rand(-0.1, 0.1), rand(-0.5, 0.5), rand(1.0, 2.4), rand(-0.5, 0.5), rand(0.05, 0.1), rand(0.5, 0.9), 2.4, 1.15, 0.3, -1.5); }
+          // counted out: the record is deleted head to feet in 11 cm amber cells (world space), the pieces lift away
+          if (!e.deleting) {
+            e.deleting = true; sfx.stamp(); FX.rings.spawn(b.position.x, 0.05, b.position.z, 0.3, 1.8, 0.5, 0xffa040, 0.9);
+            const B = e.bones || {}, hd = B.head || B.spine; const A = new THREE.Vector3(), T = new THREE.Vector3();
+            if (hd) hd.getWorldPosition(A); else A.copy(b.position);
+            if (B.lT && B.rT) { B.lT.getWorldPosition(T); B.rT.getWorldPosition(_v3); T.add(_v3).multiplyScalar(0.5); } else T.copy(b.position);
+            const D = T.sub(A); if (D.lengthSq() < 1e-4) D.set(0, -1, 0); D.normalize();
+            e.disA = A; e.disD = D;
+            for (const m of e.char.mats) if (m.userData.rim) { const u = m.userData.rim; u.uDisO.value.copy(b.position); u.uDisA.value.copy(A); u.uDisD.value.copy(D); u.uDisL.value = 1.9; }
+          }
+          e.fade -= dt * 1.0;
+          const dd = Math.min(1, 1 - e.fade);
+          if (e.disA) for (let k = 0; k < 3; k++) { _v3.copy(e.disA).addScaledVector(e.disD, dd * 1.9); Powers.voxels.emit(_v3.x + rand(-0.15, 0.15), _v3.y + rand(-0.15, 0.15), _v3.z + rand(-0.15, 0.15), rand(-0.5, 0.5), rand(1.0, 2.4), rand(-0.5, 0.5), rand(0.05, 0.1), rand(0.5, 0.9), 2.4, 1.15, 0.3, -1.5); }
           if (e.fade <= 0) { voxelPuff(b.position.x, 0.6, b.position.z, 8, 1.5, 1.5, 0.08, 0.5); removeEnemy(e); }
         } else { e.state = 'getup'; e.stateT = 0; e.upFrom = new THREE.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w); }
       }
@@ -2253,9 +2262,13 @@ function makeCiv(x, z, i) {
   // caged: crouched and cowering (motion capture); freed: they run for it
   const c = makeCharacter(fem ? 'civ_f' : 'civ_m', fem ? { idle: 'f_crouch_idle', walk: 'f_walk_cool_01', run: 'f_run_fast_01' } : { idle: 'm_crouch_idle', walk: 'm_walk_cool_01', run: 'm_run_fast_01' });
   for (const m of c.mats) if (m.color && !(m.alphaTest > 0) && /body/.test(m.name)) m.color.multiply(new THREE.Color(...[[1, 1, 1], [1, 1, 1], [1.12, 0.95, 0.85], [0.85, 0.95, 1.1]][i % 4]));
+  // they have to read in the dark of Cold Storage (characters.md): a warm lift and a pale rim on them, a warm pool under them
+  for (const m of c.mats) if (!(m.alphaTest > 0)) { if (m.emissive) { m.emissive = new THREE.Color(0xffe2c0); m.emissiveIntensity = 0.06; } addRim(m, 0xffe8d0, 0.35, 0.8); }
   const root = new THREE.Group(); root.add(c.obj); c.obj.position.y = 0; scene.add(root);
   root.position.set(x, 0, z); root.rotation.y = 0;
-  const v = { c, root, state: 'caged', t: 0, path: [[x, z + 2.4], [-10.5, -55], [-6, -55], [-2, -48], [-1, -40]], wi: 0, fade: 1 };
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(0.9, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd9a8, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
+  pool.position.y = 0.02; pool.renderOrder = 2; root.add(pool);
+  const v = { c, root, pool, state: 'caged', t: 0, path: [[x, z + 2.4], [-10.5, -55], [-6, -55], [-2, -48], [-1, -40]], wi: 0, fade: 1 };
   CIVS.push(v); return v;
 }
 
@@ -2794,6 +2807,7 @@ function stepGame(dt, rdt) {
 function renderFrame(dt, rdt) {
   for (const e of G.enemies) updateEnemyVisual(e, rdt, camera);
   updateHeroVisual(hero, rdt, [...G.holds.values()]);
+  if (G.scarf) safe(() => G.scarf.update(rdt));
   // tethers run from Null's mind (her brow) to whatever she holds
   const holds = [...G.holds.values()];
   for (let i = 0; i < tethers.length; i++) {

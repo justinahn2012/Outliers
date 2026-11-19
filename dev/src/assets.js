@@ -105,15 +105,20 @@ export function makeCharacter(key, clipKeys) {
 
 // A fresnel rim in emissive: readable silhouettes from the top-down camera (violet on Null, amber on the Census)
 export function addRim(mat, color, k = 0.6, pw = 2.4) {
-  const u = { uRimCol: { value: new THREE.Color(color) }, uRimK: { value: k }, uRimP: { value: pw }, uDis: { value: 0 }, uDisCol: { value: new THREE.Color(2.6, 1.25, 0.32) } };
+  // uDis*: the deletion runs in world space, head first, in 11 cm cells that stick to the body (characters.md Fix 9)
+  const u = { uRimCol: { value: new THREE.Color(color) }, uRimK: { value: k }, uRimP: { value: pw }, uDis: { value: 0 }, uDisCol: { value: new THREE.Color(2.6, 1.25, 0.32) },
+    uDisO: { value: new THREE.Vector3() }, uDisA: { value: new THREE.Vector3() }, uDisD: { value: new THREE.Vector3(0, -1, 0) }, uDisL: { value: 1.9 } };
   mat.userData.rim = u;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vDisW;')
+      .replace('#include <skinning_vertex>', '#include <skinning_vertex>\nvDisW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uRimCol; uniform float uRimK; uniform float uRimP; uniform float uDis; uniform vec3 uDisCol;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ float fr = 1.0 - clamp(abs(dot(normalize(vNormal), normalize(vViewPosition))), 0.0, 1.0); totalEmissiveRadiance += uRimCol * smoothstep(uRimP, 1.0, fr) * uRimK; }\nif (uDis > 0.0) { vec2 dc = floor(gl_FragCoord.xy / 5.0); float dn = fract(sin(dot(dc, vec2(12.9898, 78.233))) * 43758.5453); if (dn < uDis) discard; if (dn < uDis + 0.14) totalEmissiveRadiance += uDisCol; }');
+      .replace('#include <common>', '#include <common>\nuniform vec3 uRimCol; uniform float uRimK; uniform float uRimP; uniform float uDis; uniform vec3 uDisCol; uniform vec3 uDisO; uniform vec3 uDisA; uniform vec3 uDisD; uniform float uDisL; varying vec3 vDisW;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ float fr = 1.0 - clamp(abs(dot(normalize(vNormal), normalize(vViewPosition))), 0.0, 1.0); totalEmissiveRadiance += uRimCol * smoothstep(uRimP, 1.0, fr) * uRimK; }\nif (uDis > 0.0) { vec3 cell = floor((vDisW - uDisO) / 0.11); float dn = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453); float th = clamp(dot(vDisW - uDisA, uDisD) / uDisL, 0.0, 1.0) * 0.65 + dn * 0.35; if (th < uDis) discard; if (th < uDis + 0.08) totalEmissiveRadiance += uDisCol * 1.4; }');
   };
-  mat.customProgramCacheKey = () => 'rim';
+  mat.customProgramCacheKey = () => 'rim2';
   mat.needsUpdate = true;
 }
 
